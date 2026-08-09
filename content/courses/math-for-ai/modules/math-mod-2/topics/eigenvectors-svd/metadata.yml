@@ -1,0 +1,20 @@
+id: topic-svd-eigen
+slug: eigenvectors-svd
+title: Eigenvectors, Eigenvalues & SVD
+courseId: math-ai
+moduleId: math-mod-2
+order: 0
+readingTime: 18 min read
+difficulty: Intermediate
+summary: Discover the principal axes of matrix transformations and how SVD forms the basis for LoRA weight decomposition.
+objectives:
+  - Understand the eigenvalue equation Av = λv
+  - "Derive SVD: A = U Σ V^T for arbitrary rectangular matrices"
+  - Connect low-rank SVD approximations to parameter efficient fine-tuning
+license: CC-BY-4.0
+sources: []
+aiAssisted: false
+authorAttestation: true
+legacy: true
+prevTopicId: topic-matrix-transformations
+nextTopicId: topic-broadcasting

@@ -1,0 +1,20 @@
+id: topic-matrix-transformations
+slug: linear-transformations-matrix-multiplication
+title: Linear Transformations & Matrix Multiplication
+courseId: math-ai
+moduleId: math-mod-1
+order: 1
+readingTime: 15 min read
+difficulty: Beginner
+summary: How matrices act as linear operators that warp space, and why neural network layers are sequences of matrix transforms.
+objectives:
+  - Visualize matrix multiplication as basis vector transformation
+  - Understand linear vs non-linear mappings
+  - Master batch matrix multiplications in neural layer shapes
+license: CC-BY-4.0
+sources: []
+aiAssisted: false
+authorAttestation: true
+legacy: true
+prevTopicId: topic-vector-spaces
+nextTopicId: topic-svd-eigen

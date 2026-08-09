@@ -1,0 +1,36 @@
+name: New lesson proposal
+description: Propose a new Pingala lesson before writing the full content
+title: "content proposal: "
+labels: ["content:lesson", "needs-review"]
+body:
+  - type: input
+    id: contributor_profile
+    attributes:
+      label: Contributor profile issue
+      placeholder: "#123"
+    validations:
+      required: true
+  - type: input
+    id: subject
+    attributes:
+      label: Subject, course, and module
+    validations:
+      required: true
+  - type: textarea
+    id: audience
+    attributes:
+      label: Audience, prerequisites, and learning objectives
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Planned sources
+    validations:
+      required: true
+  - type: textarea
+    id: outline
+    attributes:
+      label: Short outline
+    validations:
+      required: true

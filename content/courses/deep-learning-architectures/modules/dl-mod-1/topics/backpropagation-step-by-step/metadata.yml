@@ -1,0 +1,20 @@
+id: topic-backprop-mechanics
+slug: backpropagation-step-by-step
+title: Backpropagation Step-by-Step
+courseId: deep-learning
+moduleId: dl-mod-1
+order: 0
+readingTime: 16 min read
+difficulty: Intermediate
+summary: Demystify reverse-mode automatic differentiation and how gradients propagate through linear and activation nodes.
+objectives:
+  - Understand reverse-mode automatic differentiation
+  - Trace local gradients and incoming upstream gradients
+  - Implement a modular Forward/Backward Layer API
+license: CC-BY-4.0
+sources: []
+aiAssisted: false
+authorAttestation: true
+legacy: true
+prevTopicId: topic-linear-regression
+nextTopicId: topic-self-attention

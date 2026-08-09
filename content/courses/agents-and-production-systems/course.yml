@@ -1,0 +1,46 @@
+id: agents-systems
+slug: agents-and-production-systems
+order: 5
+title: Autonomous Agents & Production Systems
+tagline: Tool calling loops, agentic workflows, RAG systems, and high-throughput inference engines.
+description: Learn how to build resilient multi-agent systems, structured output parsing, vector databases,
+  PagedAttention, and vLLM deployment stacks.
+trackId: agents-systems
+level: Systems & RL
+theme:
+  border: "#B197FC"
+  bg: "#F3F0FF"
+  headerBg: "#E5DBFF"
+  badgeBg: "#7950F2"
+  badgeText: "#FFFFFF"
+  accent: "#5F3DC4"
+  tagBg: "#E5DBFF"
+icon: 🤖
+estimatedHours: 30 hours
+prerequisites:
+  - Transformers & LLM Basics
+  - FastAPI / Async Python
+tags:
+  - ReAct
+  - Tool Calling
+  - RAG
+  - vLLM
+  - Multi-Agent
+cardStyle: purple-archive
+cardSnippet:
+  dateBadge: Fall Curriculum
+  notesParagraph: Build reliable autonomous reasoning loops, deterministic function-calling pipelines, semantic vector
+    cache, and production deployment architectures.
+  previewItems:
+    - id: agent-1
+      title: ReAct Agent Loops & Tool Execution
+      subtext: Reason + Act + Observe cycles with error recovery
+      color: "#7950F2"
+    - id: agent-2
+      title: High-Throughput Serving & PagedAttention
+      subtext: Eliminating memory fragmentation in LLM inference
+      color: "#1C7ED6"
+contributor:
+  name: Pingala Systems Group
+  github: pingala-project
+  role: Core Maintainers

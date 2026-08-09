@@ -1,0 +1,45 @@
+id: transformers-llms
+slug: transformers-and-llms
+order: 4
+title: Transformers & Large Language Models
+tagline: Self-attention, GPT pretraining, RoPE, KV cache, and fine-tuning mechanics.
+description: Build a GPT model from zero. Understand causal attention masks, BPE tokenization, FlashAttention mechanics,
+  LoRA fine-tuning, and alignment.
+trackId: llms-genai
+level: LLMs & GenAI
+theme:
+  border: "#74C0FC"
+  bg: "#E7F5FF"
+  headerBg: "#D0EBFF"
+  badgeBg: "#1C7ED6"
+  badgeText: "#FFFFFF"
+  accent: "#1864AB"
+  tagBg: "#D0EBFF"
+icon: ✨
+estimatedHours: 48 hours
+prerequisites:
+  - Deep Learning
+  - PyTorch proficiency
+tags:
+  - Self-Attention
+  - Transformer
+  - LoRA
+  - KV Cache
+  - Pretraining
+cardStyle: blue-folder
+cardSnippet:
+  previewItems:
+    - id: llm-1
+      title: Scaled Dot-Product Attention
+      subtext: Q, K, V projections and softmax scaling
+      color: "#1C7ED6"
+    - id: llm-2
+      title: KV Cache & Autoregressive Decoding
+      subtext: Eliminate O(N^2) latency during generation
+      color: "#7950F2"
+  notesParagraph: From "Attention Is All You Need" (2017) to modern Llama-3 / Gemma architectures with SwiGLU, RMSNorm and
+    Rotary Embeddings (RoPE).
+contributor:
+  name: Rishabh
+  github: rishabh
+  role: Maintainer

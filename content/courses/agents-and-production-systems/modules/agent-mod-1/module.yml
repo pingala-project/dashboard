@@ -1,0 +1,5 @@
+id: agent-mod-1
+slug: agent-mod-1
+order: 0
+title: "Module 01: Agentic Reasoning & Tool Calling"
+description: Structured output schemas, function execution, and stateful agent memory.

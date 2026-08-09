@@ -1,0 +1,5 @@
+id: math-mod-2
+slug: math-mod-2
+order: 1
+title: "Module 02: Eigenvalues & Singular Value Decomposition"
+description: Spectral theory, principal directions of variation, and low-rank matrix approximations.

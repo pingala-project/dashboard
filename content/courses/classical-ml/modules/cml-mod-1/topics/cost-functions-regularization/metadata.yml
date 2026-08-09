@@ -1,0 +1,23 @@
+id: topic-linear-regression
+slug: cost-functions-regularization
+title: Cost Functions, OLS & Regularization (L1 vs L2)
+courseId: classical-ml
+moduleId: cml-mod-1
+order: 0
+readingTime: 14 min read
+difficulty: Beginner
+summary: Derive Ordinary Least Squares, inspect geometric contour levels of L1 Lasso vs L2 Ridge penalties.
+objectives:
+  - Derive the normal equation (X^T X)^(-1) X^T y
+  - Understand the geometry of L1 diamond vs L2 circle constraints
+  - Diagnose overfitting using train-validation curves
+license: CC-BY-4.0
+sources: []
+aiAssisted: false
+authorAttestation: true
+legacy: true
+contributor:
+  name: Pingala AI Community
+  github: pingala-project
+prevTopicId: topic-broadcasting
+nextTopicId: topic-backprop-mechanics

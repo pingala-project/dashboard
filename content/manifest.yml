@@ -1,0 +1,59 @@
+schemaVersion: 1
+subject: ai-ml
+title: Pingala AI & Machine Learning Curriculum
+tracks:
+  - id: foundations
+    name: Foundations
+    icon: Brain
+    color: "#FF6B6B"
+    description: Mathematics, Linear Algebra, and Vector Computing for AI
+    courseIds:
+      - math-ai
+      - python-tensors
+  - id: core-ml
+    name: Core Machine Learning
+    icon: Cpu
+    color: "#FCC419"
+    description: Statistical Learning, Tree Ensembles, and Optimization
+    courseIds:
+      - classical-ml
+  - id: deep-learning
+    name: Deep Learning
+    icon: Layers
+    color: "#51CF66"
+    description: Neural Networks, Backpropagation, and Vision/Sequence Models
+    courseIds:
+      - deep-learning
+  - id: llms-genai
+    name: LLMs & GenAI
+    icon: Sparkles
+    color: "#339AF0"
+    description: Transformers, Pretraining, Fine-Tuning, and Generative Models
+    courseIds:
+      - transformers-llms
+  - id: agents-systems
+    name: AI Agents & Systems
+    icon: Boxes
+    color: "#845EF7"
+    description: Autonomous Agents, Tool Calling, RAG, and High-Throughput Inference
+    courseIds:
+      - agents-systems
+courses:
+  - id: math-ai
+    slug: math-for-ai
+    order: 0
+  - id: python-tensors
+    slug: python-tensors
+    order: 1
+  - id: classical-ml
+    slug: classical-ml
+    order: 2
+  - id: deep-learning
+    slug: deep-learning-architectures
+    order: 3
+  - id: transformers-llms
+    slug: transformers-and-llms
+    order: 4
+  - id: agents-systems
+    slug: agents-and-production-systems
+    order: 5

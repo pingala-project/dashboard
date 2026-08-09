@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible dashboard or lesson-rendering problem
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or topic
+      placeholder: Course, lesson title, or URL
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true

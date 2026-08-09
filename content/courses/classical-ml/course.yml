@@ -1,0 +1,44 @@
+id: classical-ml
+slug: classical-ml
+order: 2
+title: Classical Machine Learning
+tagline: Rigorous statistical learning, decision theory, tree ensembles, and clustering.
+description: Master linear models, regularization (Lasso & Ridge), SVMs, gradient boosted decision trees (XGBoost,
+  LightGBM), and evaluation metrics.
+trackId: core-ml
+level: Core ML
+theme:
+  border: "#FFE066"
+  bg: "#FFF9DB"
+  headerBg: "#FFF3BF"
+  badgeBg: "#F59F00"
+  badgeText: "#FFFFFF"
+  accent: "#E67700"
+  tagBg: "#FFF3BF"
+icon: 📊
+estimatedHours: 32 hours
+prerequisites:
+  - Linear Algebra
+  - Basic Python
+tags:
+  - XGBoost
+  - Loss Functions
+  - Bias-Variance
+  - Ensembles
+cardStyle: trip-notes
+cardSnippet:
+  previewItems:
+    - id: cml-1
+      title: Maximum Likelihood & Regularization
+      subtext: L1/L2 loss geometry & sparsity
+      color: "#F59F00"
+    - id: cml-2
+      title: Gradient Boosted Decision Trees
+      subtext: Additive modeling & residual fitting
+      color: "#40C057"
+  notesParagraph: A rigorous theoretical grounding in statistical estimation, bias-variance tradeoff, decision trees, and
+    kernel methods.
+contributor:
+  name: Pingala AI Community
+  github: pingala-project
+  role: Core Contributors

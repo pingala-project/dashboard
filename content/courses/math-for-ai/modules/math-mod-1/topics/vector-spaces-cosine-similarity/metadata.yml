@@ -1,0 +1,20 @@
+id: topic-vector-spaces
+slug: vector-spaces-cosine-similarity
+title: Vector Spaces & Cosine Similarity
+courseId: math-ai
+moduleId: math-mod-1
+order: 0
+readingTime: 12 min read
+difficulty: Beginner
+summary: Understand vectors as directions in high-dimensional feature spaces, and why the dot product measures semantic
+  alignment.
+objectives:
+  - Develop geometric intuition for n-dimensional Euclidean vectors
+  - Derive the dot product and its connection to cosine similarity
+  - Implement vector normalization and similarity matrices in Python/NumPy
+license: CC-BY-4.0
+sources: []
+aiAssisted: false
+authorAttestation: true
+legacy: true
+nextTopicId: topic-matrix-transformations

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "subjects": [
+    {
+      "slug": "ai-ml",
+      "repository": "pingala-project/ai-ml",
+      "ref": "main",
+      "commit": "local-bootstrap",
+      "path": "content",
+      "note": "This dashboard bootstrap keeps the subject content locally. Replace commit with an immutable SHA when ai-ml is split into its own repository."
+    }
+  ]
+}

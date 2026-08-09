@@ -1,0 +1,32 @@
+name: Contributor profile
+description: Provide the context needed for a new lesson review
+title: "contributor profile: "
+labels: ["needs-author-profile"]
+body:
+  - type: input
+    id: github
+    attributes:
+      label: GitHub username
+    validations:
+      required: true
+  - type: textarea
+    id: background
+    attributes:
+      label: Subject background and interests
+      description: No age, government ID, or private contact details are requested.
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Small sample contribution
+      description: Link to an issue, correction, note, or prior public work.
+    validations:
+      required: true
+  - type: checkboxes
+    id: attestation
+    attributes:
+      label: Attestation
+      options:
+        - label: I will only submit material I have reviewed, can explain, and have permission to publish.
+          required: true

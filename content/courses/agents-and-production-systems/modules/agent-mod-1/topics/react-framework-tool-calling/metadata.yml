@@ -1,0 +1,22 @@
+id: topic-react-loops
+slug: react-framework-tool-calling
+title: The ReAct Framework & Structured Tool Calling
+courseId: agents-systems
+moduleId: agent-mod-1
+order: 0
+readingTime: 15 min read
+difficulty: Intermediate
+summary: Build an autonomous agent with tool execution, thought traces, reflection, and JSON schema constraints.
+objectives:
+  - Understand the Thought -> Action -> Observation loop
+  - Enforce structured tool definitions with JSON schema
+  - Handle tool runtime exceptions and retries gracefully
+license: CC-BY-4.0
+sources: []
+aiAssisted: false
+authorAttestation: true
+legacy: true
+contributor:
+  name: Pingala Systems Group
+  github: pingala-project
+prevTopicId: topic-rotary-embeddings

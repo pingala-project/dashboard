@@ -1,0 +1,6 @@
+# Keep ownership rules on the protected default branch.
+* @pingala-project/maintainers
+/content/ @pingala-project/curriculum-reviewers
+/migrations/ @pingala-project/maintainers
+/functions/ @pingala-project/maintainers
+/.github/ @pingala-project/maintainers
