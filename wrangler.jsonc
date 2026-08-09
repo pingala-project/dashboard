@@ -12,7 +12,8 @@
     {
       "binding": "DB",
       "database_name": "pingala-dashboard",
-      "database_id": "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+      "database_id": "cc7661da-cf18-4074-81df-260fb98c25b0",
+      "migrations_dir": "./migrations"
     }
   ]
 }
