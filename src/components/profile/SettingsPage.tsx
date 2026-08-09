@@ -64,35 +64,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onExportData,
   onImportData,
 }) => {
-  const { settings, updateProfile, updateAppearance, updateDisplay, updateLearning } = useSettings();
+  const { settings, updateProfile, updateAppearance, updateDisplay, updateLearning, updateAccentColor } = useSettings();
   const { user, login, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('account');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // Accent color state (default blue)
-  const [accentColor, setAccentColor] = useState(() => {
-    return localStorage.getItem('pingala_accent') || '#2563eb';
-  });
+  const accentColor = settings.accentColor;
 
   // Apply accent color to CSS custom property
   useEffect(() => {
     const found = ACCENT_COLORS.find((c) => c.value === accentColor);
     document.documentElement.style.setProperty('--accent', accentColor);
     document.documentElement.style.setProperty('--accent-hover', found?.hover || accentColor);
-    localStorage.setItem('pingala_accent', accentColor);
   }, [accentColor]);
-
-  // Also apply on mount from storage
-  useEffect(() => {
-    const saved = localStorage.getItem('pingala_accent');
-    if (saved) {
-      const found = ACCENT_COLORS.find((c) => c.value === saved);
-      document.documentElement.style.setProperty('--accent', saved);
-      document.documentElement.style.setProperty('--accent-hover', found?.hover || saved);
-    }
-  }, []);
 
   // Inline edit states
   const [editingName, setEditingName] = useState(false);
@@ -438,7 +424,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
             <div className="mobbin-footer-note">
               <CheckmarkCircle02Icon size={14} color="var(--text-muted)" />
-              <span>All preferences and profile modifications are stored securely in local workspace storage.</span>
+              <span>{user ? 'Your profile and preferences sync to your Pingala account.' : 'Preferences are stored locally until you sign in with GitHub.'}</span>
             </div>
           </div>
         )}
@@ -479,7 +465,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     className={`accent-swatch ${accentColor === c.value ? 'active' : ''}`}
                     style={{ background: c.value }}
                     title={c.label}
-                    onClick={() => setAccentColor(c.value)}
+                    onClick={() => updateAccentColor(c.value)}
                   >
                     {accentColor === c.value && (
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">

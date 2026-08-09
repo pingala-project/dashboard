@@ -41,4 +41,13 @@ export interface AppSettings {
   appearance: AppearanceSettings;
   display: DisplaySettings;
   learning: LearningSettings;
+  accentColor: string;
 }
+
+export type AppSettingsPatch = {
+  profile?: Partial<UserProfile>;
+  appearance?: Partial<AppearanceSettings>;
+  display?: Partial<DisplaySettings>;
+  learning?: Partial<LearningSettings>;
+  accentColor?: string;
+};

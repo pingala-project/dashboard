@@ -4,15 +4,15 @@
   "pages_build_output_dir": "dist",
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1
+  "vars": {
+    "PUBLIC_APP_ORIGIN": "https://pingala-dashboard.pages.dev"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "pingala-dashboard",
-      "database_id": "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+      "database_id": "cc7661da-cf18-4074-81df-260fb98c25b0",
+      "migrations_dir": "./migrations"
     }
   ]
 }
