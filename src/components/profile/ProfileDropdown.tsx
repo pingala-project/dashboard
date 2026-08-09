@@ -10,7 +10,7 @@ import {
 } from 'hugeicons-react';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
-import { dashboardRepositoryUrl } from '../../config/project';
+import { contentProposalUrl, contributionGuideUrl, feedbackUrl, projectReadmeUrl, releasesUrl } from '../../config/project';
 
 interface ProfileDropdownProps {
   isOpen: boolean;
@@ -57,15 +57,15 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
 
   const currentTheme = settings.appearance.theme;
   const githubUser = user?.login || settings.profile.github || 'rishabh';
+  const displayName = user?.name || settings.profile.name || 'Guest learner';
+  const displayEmail = user?.email || settings.profile.email || 'Sign in to show your GitHub email';
 
   return (
     <div className="profile-dropdown-popover" ref={dropdownRef}>
       {/* Header Profile Section */}
       <div className="profile-dropdown-header">
-        <h3 className="profile-dropdown-name">{settings.profile.name || 'Rishabh'}</h3>
-        <p className="profile-dropdown-email">
-          {settings.profile.email || `${(settings.profile.github || 'rishabh').toLowerCase()}@nst.rishihood.edu.in`}
-        </p>
+        <h3 className="profile-dropdown-name">{displayName}</h3>
+        <p className="profile-dropdown-email">{displayEmail}</p>
 
         <button 
           className="profile-setup-btn"
@@ -81,7 +81,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
       <div className="profile-dropdown-section">
         <button 
           className="profile-dropdown-item"
-          onClick={() => handleAction(() => alert('Request content: What AI topic or algorithm would you like to see next? Email: hello@pingala.ai'))}
+          onClick={() => { window.open(contentProposalUrl, '_blank', 'noopener,noreferrer'); onClose(); }}
         >
           <Add01Icon size={16} className="profile-item-icon" />
           <span>Request content</span>
@@ -89,7 +89,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
 
         <button 
           className="profile-dropdown-item"
-          onClick={() => handleAction(() => alert('Thank you for your feedback! Reach out to us on GitHub or Discord.'))}
+          onClick={() => { window.open(feedbackUrl, '_blank', 'noopener,noreferrer'); onClose(); }}
         >
           <Comment01Icon size={16} className="profile-item-icon" />
           <span>Give feedback</span>
@@ -138,16 +138,6 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
 
       {/* Secondary Links List */}
       <div className="profile-dropdown-section links-section">
-        {!user && (
-          <button
-            className="profile-dropdown-item text-only with-arrow"
-            onClick={() => handleAction(login)}
-          >
-            <span>Sign in with GitHub</span>
-            <ArrowUpRight01Icon size={13} />
-          </button>
-        )}
-
         {/* GitHub Option */}
         <a 
           href={`https://github.com/${githubUser}`} 
@@ -162,7 +152,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
 
         {/* Want to contribute? */}
         <a 
-          href={dashboardRepositoryUrl}
+          href={contributionGuideUrl}
           target="_blank" 
           rel="noreferrer" 
           className="profile-dropdown-item text-only with-arrow"
@@ -172,12 +162,14 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
           <ArrowUpRight01Icon size={13} />
         </a>
 
-        <button className="profile-dropdown-item text-only" onClick={onClose}>
+        <a href={releasesUrl} target="_blank" rel="noreferrer" className="profile-dropdown-item text-only with-arrow" onClick={onClose}>
           <span>Changelog</span>
-        </button>
-        <button className="profile-dropdown-item text-only" onClick={onClose}>
-          <span>Blog</span>
-        </button>
+          <ArrowUpRight01Icon size={13} />
+        </a>
+        <a href={projectReadmeUrl} target="_blank" rel="noreferrer" className="profile-dropdown-item text-only with-arrow" onClick={onClose}>
+          <span>Project notes</span>
+          <ArrowUpRight01Icon size={13} />
+        </a>
         {user && <button 
           className="profile-dropdown-item text-only logout-item"
           onClick={() => {

@@ -10,7 +10,7 @@ export interface Contributor {
 }
 
 export interface ContentBlock {
-  type: 'paragraph' | 'heading2' | 'heading3' | 'callout' | 'code' | 'math' | 'list' | 'key_takeaways';
+  type: 'paragraph' | 'heading2' | 'heading3' | 'callout' | 'code' | 'math' | 'list' | 'key_takeaways' | 'image' | 'chart' | 'embed' | 'attachment' | 'quote';
   title?: string;
   text?: string;
   items?: string[];
@@ -19,6 +19,14 @@ export interface ContentBlock {
   code?: string;
   math?: string;
   caption?: string;
+  src?: string;
+  url?: string;
+  alt?: string;
+  width?: string;
+  height?: number;
+  description?: string;
+  label?: string;
+  provider?: string;
 }
 
 export interface CheckpointQuestion {

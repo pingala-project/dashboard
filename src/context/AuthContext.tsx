@@ -5,6 +5,7 @@ export interface AuthUser {
   id: string;
   githubId: string;
   login: string;
+  email: string | null;
   name: string;
   avatarUrl: string | null;
   bio: string;

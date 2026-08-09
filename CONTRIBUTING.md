@@ -23,6 +23,98 @@ Every new lesson must include:
 6. an author attestation that the lesson was read, checked, and can be explained;
 7. no secrets, tracking scripts, raw HTML, or executable JSX.
 
+## Lesson writing format
+
+Each topic lives in `content/courses/<course>/modules/<module>/topics/<topic>/`:
+
+```text
+metadata.yml       # stable ID, title, objectives, sources, licence, author attestation
+content.md         # the lesson readers see
+checkpoints.yml    # typed self-assessment questions
+```
+
+The renderer intentionally supports a small, safe Markdown vocabulary. Use headings,
+paragraphs, lists, fenced code, KaTeX, links, and these inline marks:
+
+```md
+## A useful idea
+
+This is **important**, this is *emphasis*, and this is ==a reader highlight==.
+You can also ~~cross out an outdated phrase~~ or add an image:
+![A labelled diagram](https://example.com/diagram.png)
+```
+
+Inline links and images must use `https://`, a relative `/asset` URL, or a hash link.
+Raw HTML, `javascript:` URLs, scripts, JSX, and arbitrary iframes are rejected.
+
+### Images, graphs, attachments, and embeds
+
+For a full-width visual, use a YAML directive. The same block can represent a chart;
+the type tells the reader what it is:
+
+```md
+:::image
+src: https://example.com/attention-map.png
+alt: Heatmap showing attention between tokens
+caption: A small attention map for the worked example.
+width: 92%
+:::
+
+:::chart
+src: https://example.com/model-accuracy.svg
+alt: Accuracy by training epoch
+caption: The validation curve levels off after epoch 18.
+:::
+```
+
+Use attachments for notebooks, papers, or downloadable resources:
+
+```md
+:::attachment
+url: https://example.com/lesson-notebook.ipynb
+label: Download the worked notebook
+description: Jupyter notebook for the tensor broadcasting exercise.
+:::
+```
+
+Interactive embeds are limited to reviewed hosts such as YouTube, Vimeo, Desmos,
+Observable, CodePen, CodeSandbox, and StackBlitz:
+
+```md
+:::embed
+url: https://www.desmos.com/calculator/example
+title: Explore the curve interactively
+height: 520
+caption: Drag the parameter to see the effect on the function.
+:::
+```
+
+On the page, images render as labelled figures, charts get the same responsive frame,
+attachments become accessible resource cards, and allowed embeds render in a sandboxed
+frame. An unapproved embed host becomes a normal safe link instead of executable content.
+Keep alt text useful to someone who cannot see the image; never use an image as the only
+place where a mathematical or factual explanation appears.
+
+### Math, code, callouts, and checkpoints
+
+```md
+:::math The update rule
+\\theta_{t+1} = \\theta_t - \\eta \\nabla J(\\theta_t)
+:::
+
+:::code python
+def step(theta, gradient, learning_rate):
+    return theta - learning_rate * gradient
+:::
+
+:::tip A useful check
+Explain why the learning rate changes the size of the update.
+:::
+```
+
+Use `metadata.yml` for sources and stable IDs, and put answer explanations in
+`checkpoints.yml`. A checkpoint is a learning aid, not a trick question.
+
 AI may help with brainstorming, editing, or formatting. Unreviewed copy-paste from an AI system is not acceptable, and an AI detector is not treated as proof of authorship. Reviewers will check sources, correctness, originality, and whether the author can defend the material.
 
 ## Review process

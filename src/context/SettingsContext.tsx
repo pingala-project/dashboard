@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 const DEFAULT_SETTINGS: AppSettings = {
   profile: {
     name: 'Rishabh',
-    email: 'rishabh.g23csai@nst.rishihood.edu.in',
+    email: '',
     github: 'rishabh',
     bio: 'Learning AI & Machine Learning from first principles with Pingala.',
     learningGoal: 'Master Foundations & Transformer Architectures',
@@ -31,7 +31,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const STORAGE_KEY = 'pingala_app_settings_v1';
 
-function mergeSettings(current: AppSettings, remote: AppSettingsPatch, user: { name: string; login: string; bio: string; learningGoal: string; avatarUrl: string | null }): AppSettings {
+function mergeSettings(current: AppSettings, remote: AppSettingsPatch, user: { name: string; login: string; email: string | null; bio: string; learningGoal: string; avatarUrl: string | null }): AppSettings {
   return {
     ...current,
     profile: {
@@ -41,6 +41,7 @@ function mergeSettings(current: AppSettings, remote: AppSettingsPatch, user: { n
       github: user.login,
       bio: user.bio,
       learningGoal: user.learningGoal,
+      ...(user.email ? { email: user.email } : {}),
       ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
     },
     appearance: { ...current.appearance, ...remote.appearance },
@@ -132,6 +133,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     root.setAttribute('data-font', settings.display.fontFamily);
     root.setAttribute('data-font-size', settings.display.fontSize);
     root.setAttribute('data-reading-width', settings.display.readingWidth);
+    root.setAttribute('data-code-theme', settings.appearance.codeTheme);
     root.style.setProperty('--accent', settings.accentColor);
 
     // If system theme, listen for OS changes
@@ -143,7 +145,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       mediaQuery.addEventListener('change', listener);
       return () => mediaQuery.removeEventListener('change', listener);
     }
-  }, [settings.accentColor, settings.appearance.theme, settings.display.fontFamily, settings.display.fontSize, settings.display.readingWidth]);
+  }, [settings.accentColor, settings.appearance.codeTheme, settings.appearance.theme, settings.display.fontFamily, settings.display.fontSize, settings.display.readingWidth]);
 
   const updateProfile = (profileUpdate: Partial<UserProfile>) => {
     setSettings((prev) => ({

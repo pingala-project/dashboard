@@ -24,6 +24,9 @@ try {
     if (s?.display?.readingWidth) {
       document.documentElement.setAttribute('data-reading-width', s.display.readingWidth);
     }
+    if (s?.appearance?.codeTheme) {
+      document.documentElement.setAttribute('data-code-theme', s.appearance.codeTheme);
+    }
   }
 } catch { /* ignore */ }
 

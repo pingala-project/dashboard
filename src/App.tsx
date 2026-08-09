@@ -11,12 +11,14 @@ import { NestedCourseSidebar } from './components/layout/NestedCourseSidebar';
 import { SearchModal } from './components/common/SearchModal';
 import { SettingsPage } from './components/profile/SettingsPage';
 import { Bookmark02Icon } from 'hugeicons-react';
+import { ToastProvider, useToast } from './context/ToastContext';
 
 const COMPLETED_STORAGE_KEY = 'pingala_completed_topics';
 const BOOKMARKS_STORAGE_KEY = 'pingala_bookmarked_topics';
 
 const AppContent: React.FC = () => {
   const { user, refreshProgress, syncProgress } = useAuth();
+  const { showToast } = useToast();
   const [history, setHistory] = useState<ActiveView[]>([{ type: 'all_courses' }]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -139,6 +141,7 @@ const AppContent: React.FC = () => {
   const handleResetProgress = () => {
     setCompletedTopicIds(new Set());
     setBookmarkedTopicIds(new Set());
+    showToast('Progress reset', 'Completed lessons and bookmarks were cleared.', 'success');
   };
 
   const handleExportData = () => {
@@ -155,6 +158,7 @@ const AppContent: React.FC = () => {
     a.download = `pingala_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    showToast('Backup exported', 'Your Pingala progress file is ready.', 'success');
   };
 
   const handleImportData = (file: File) => {
@@ -168,9 +172,9 @@ const AppContent: React.FC = () => {
         if (parsed.bookmarkedTopicIds && Array.isArray(parsed.bookmarkedTopicIds)) {
           setBookmarkedTopicIds(new Set(parsed.bookmarkedTopicIds));
         }
-        alert('Curriculum progress imported successfully!');
+        showToast('Backup imported', 'Your curriculum progress and bookmarks were restored.', 'success');
       } catch {
-        alert('Invalid JSON backup file format.');
+        showToast('Import failed', 'Choose a valid Pingala JSON backup file.', 'error');
       }
     };
     reader.readAsText(file);
@@ -388,7 +392,9 @@ export const App: React.FC = () => {
   return (
     <AuthProvider>
       <SettingsProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </SettingsProvider>
     </AuthProvider>
   );
