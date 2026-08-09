@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -41,6 +42,11 @@ async function main() {
   const sourceRoot = path.resolve(target, subject.path || '.');
   assert(sourceRoot.startsWith(`${target}${path.sep}`) || sourceRoot === target, 'Content path must stay inside the checked-out repository');
   assert(await fileExists(path.join(sourceRoot, 'manifest.yml')), `Locked subject has no manifest.yml at ${subject.path || '.'}`);
+  if (subject.checksum) {
+    assert(/^[a-f0-9]{64}$/i.test(subject.checksum), `Invalid checksum in content-lock.json for ${subject.slug}`);
+    const checksum = await checksumDirectory(sourceRoot);
+    assert(checksum === subject.checksum.toLowerCase(), `Content checksum ${checksum} does not match lock ${subject.checksum}`);
+  }
   await fs.rm(CONTENT_ROOT, { recursive: true, force: true });
   await fs.cp(sourceRoot, CONTENT_ROOT, { recursive: true });
   console.log(`Synced ${subject.repository}@${subject.commit}`);
@@ -53,6 +59,29 @@ async function fileExists(filePath) {
   } catch {
     return false;
   }
+}
+
+async function checksumDirectory(directory) {
+  const files = [];
+  async function collect(current) {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const filePath = path.join(current, entry.name);
+      if (entry.isDirectory()) await collect(filePath);
+      else files.push(filePath);
+    }
+  }
+
+  await collect(directory);
+  const hash = crypto.createHash('sha256');
+  for (const filePath of files) {
+    const relative = path.relative(directory, filePath).split(path.sep).join('/');
+    hash.update(`${relative}\0`);
+    hash.update(await fs.readFile(filePath));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
 }
 
 await main();

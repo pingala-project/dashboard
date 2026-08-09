@@ -1,6 +1,6 @@
 # GitHub organization bootstrap
 
-This workspace is the dashboard repository bootstrap. Create the public organization and repositories interactively after signing in to GitHub:
+The public organization and repositories are now provisioned:
 
 ```text
 pingala-project/.github
@@ -23,13 +23,4 @@ Recommended organization settings:
 
 The `.github` files in this repository can seed the organization-level community-health repository. Subject repositories should reuse the same content workflow and carry their own CODEOWNERS file.
 
-After interactive authentication, publish this initialized dashboard repository with:
-
-```sh
-gh auth login -h github.com
-git add .
-git commit -m "Bootstrap Pingala dashboard backend and contribution system"
-gh repo create pingala-project/dashboard --public --source=. --remote=origin --push
-```
-
-Create the remaining public repositories from GitHub's organization UI, then copy the content tree into `pingala-project/ai-ml` and change `content-lock.json` to the resulting immutable commit SHA. The organization itself must be created and owned interactively; this workspace cannot create it while the GitHub CLI token is expired.
+The dashboard is pushed to `pingala-project/dashboard`; curriculum is pinned in `content-lock.json` to the reviewed `ai-ml` commit and its checksum. The organization profile and reusable workflows live in `pingala-project/.github`, and the static landing page lives in `pingala-project/landing`.

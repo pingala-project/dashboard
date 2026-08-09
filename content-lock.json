@@ -5,9 +5,10 @@
       "slug": "ai-ml",
       "repository": "pingala-project/ai-ml",
       "ref": "main",
-      "commit": "local-bootstrap",
+      "commit": "53275e40fa1d2b02cca515cbbc96ab8c6db7a982",
       "path": "content",
-      "note": "This dashboard bootstrap keeps the subject content locally. Replace commit with an immutable SHA when ai-ml is split into its own repository."
+      "checksum": "7fec74259550c93efd280156f9371366fe53d341ba75af13d60779e893f950f9",
+      "note": "Content is pinned to an immutable reviewed commit and verified with a deterministic SHA-256 checksum."
     }
   ]
 }
