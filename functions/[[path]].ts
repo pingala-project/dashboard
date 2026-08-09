@@ -40,8 +40,17 @@ interface SessionUser {
   learningGoal: string;
 }
 
+interface SettingsPayload {
+  profile?: { email?: string };
+  appearance?: { theme?: 'light' | 'dark' | 'system'; codeTheme?: 'onedark' | 'github' | 'monokai' };
+  display?: { fontFamily?: 'sans' | 'serif' | 'mono' | 'handwritten'; fontSize?: 'compact' | 'standard' | 'large'; readingWidth?: 'standard' | 'spacious'; enableLineNumbers?: boolean };
+  learning?: { confettiEnabled?: boolean; autoAdvanceOnComplete?: boolean; instantQuizFeedback?: boolean; copyCodeWithComments?: boolean };
+  accentColor?: string;
+}
+
 const SESSION_COOKIE = 'pingala_session';
 const OAUTH_COOKIE = 'pingala_oauth_state';
+const CSRF_COOKIE = 'pingala_csrf';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const OAUTH_TTL_MS = 1000 * 60 * 10;
 const TOPIC_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,99}$/i;
@@ -69,13 +78,13 @@ async function digest(value: string, secret?: string) {
   return base64Url(new Uint8Array(await crypto.subtle.sign('HMAC', key, bytes)));
 }
 
-function cookieOptions(request: Request, maxAge: number) {
+function cookieOptions(request: Request, maxAge: number, httpOnly = true) {
   const secure = new URL(request.url).protocol === 'https:';
-  return `Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+  return `Path=/; Max-Age=${maxAge};${httpOnly ? ' HttpOnly;' : ''} SameSite=Lax${secure ? '; Secure' : ''}`;
 }
 
-function setCookie(request: Request, name: string, value: string, maxAge: number) {
-  return `${name}=${encodeURIComponent(value)}; ${cookieOptions(request, maxAge)}`;
+function setCookie(request: Request, name: string, value: string, maxAge: number, httpOnly = true) {
+  return `${name}=${encodeURIComponent(value)}; ${cookieOptions(request, maxAge, httpOnly)}`;
 }
 
 function clearCookie(request: Request, name: string) {
@@ -86,6 +95,14 @@ function getCookie(request: Request, name: string) {
   const cookies = request.headers.get('Cookie') || '';
   const item = cookies.split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`));
   return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
+}
+
+function csrfFailure(request: Request) {
+  const cookieToken = getCookie(request, CSRF_COOKIE);
+  const headerToken = request.headers.get('X-CSRF-Token');
+  return cookieToken && headerToken && cookieToken === headerToken
+    ? null
+    : errorResponse('CSRF validation failed', 403);
 }
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}) {
@@ -127,6 +144,58 @@ async function parseJson(request: Request, maxBytes = 64 * 1024): Promise<Record
 
 function cleanString(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function enumValue<T extends string>(value: unknown, allowed: Set<T>) {
+  return typeof value === 'string' && allowed.has(value as T) ? value as T : undefined;
+}
+
+function normalizeSettings(value: unknown): SettingsPayload {
+  if (!isRecord(value)) throw new Error('Settings must be an object');
+  const profile = isRecord(value.profile) ? value.profile : undefined;
+  const appearance = isRecord(value.appearance) ? value.appearance : undefined;
+  const display = isRecord(value.display) ? value.display : undefined;
+  const learning = isRecord(value.learning) ? value.learning : undefined;
+  const normalized: SettingsPayload = {};
+  const themes = new Set(['light', 'dark', 'system'] as const);
+  const codeThemes = new Set(['onedark', 'github', 'monokai'] as const);
+  const fonts = new Set(['sans', 'serif', 'mono', 'handwritten'] as const);
+  const sizes = new Set(['compact', 'standard', 'large'] as const);
+  const widths = new Set(['standard', 'spacious'] as const);
+
+  if (profile && typeof profile.email === 'string') normalized.profile = { email: cleanString(profile.email, 240) };
+  if (appearance) normalized.appearance = {
+    ...(enumValue(appearance.theme, themes) ? { theme: enumValue(appearance.theme, themes) } : {}),
+    ...(enumValue(appearance.codeTheme, codeThemes) ? { codeTheme: enumValue(appearance.codeTheme, codeThemes) } : {}),
+  };
+  if (display) normalized.display = {
+    ...(enumValue(display.fontFamily, fonts) ? { fontFamily: enumValue(display.fontFamily, fonts) } : {}),
+    ...(enumValue(display.fontSize, sizes) ? { fontSize: enumValue(display.fontSize, sizes) } : {}),
+    ...(enumValue(display.readingWidth, widths) ? { readingWidth: enumValue(display.readingWidth, widths) } : {}),
+    ...(typeof display.enableLineNumbers === 'boolean' ? { enableLineNumbers: display.enableLineNumbers } : {}),
+  };
+  if (learning) normalized.learning = {
+    ...(typeof learning.confettiEnabled === 'boolean' ? { confettiEnabled: learning.confettiEnabled } : {}),
+    ...(typeof learning.autoAdvanceOnComplete === 'boolean' ? { autoAdvanceOnComplete: learning.autoAdvanceOnComplete } : {}),
+    ...(typeof learning.instantQuizFeedback === 'boolean' ? { instantQuizFeedback: learning.instantQuizFeedback } : {}),
+    ...(typeof learning.copyCodeWithComments === 'boolean' ? { copyCodeWithComments: learning.copyCodeWithComments } : {}),
+  };
+  if (typeof value.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(value.accentColor)) normalized.accentColor = value.accentColor.toLowerCase();
+  return normalized;
+}
+
+function mergeSettings(current: SettingsPayload, next: SettingsPayload): SettingsPayload {
+  return {
+    profile: { ...current.profile, ...next.profile },
+    appearance: { ...current.appearance, ...next.appearance },
+    display: { ...current.display, ...next.display },
+    learning: { ...current.learning, ...next.learning },
+    ...(next.accentColor || current.accentColor ? { accentColor: next.accentColor || current.accentColor } : {}),
+  };
 }
 
 function userPayload(user: UserRow): SessionUser {
@@ -183,7 +252,7 @@ async function beginGitHubLogin(request: Request, env: AppEnv) {
 
   const params = new URLSearchParams({
     client_id: env.GITHUB_CLIENT_ID,
-    redirect_uri: new URL('/auth/github/callback', request.url).toString(),
+    redirect_uri: new URL('/auth/github/callback', appOrigin(request, env)).toString(),
     scope: 'read:user user:email',
     state,
   });
@@ -217,7 +286,7 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
       client_id: env.GITHUB_CLIENT_ID,
       client_secret: env.GITHUB_CLIENT_SECRET,
       code,
-      redirect_uri: new URL('/auth/github/callback', request.url).toString(),
+      redirect_uri: new URL('/auth/github/callback', appOrigin(request, env)).toString(),
     }),
   });
   if (!tokenResponse.ok) return redirect(request, `${appOrigin(request, env)}/?auth_error=token_exchange`);
@@ -245,6 +314,8 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
 }
 
 async function logout(request: Request, env: AppEnv) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
   const rawToken = getCookie(request, SESSION_COOKIE);
   if (rawToken && env.DB) await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await digest(rawToken, env.SESSION_SECRET)).run();
   return json({ ok: true }, 200, { 'Set-Cookie': clearCookie(request, SESSION_COOKIE) });
@@ -252,10 +323,14 @@ async function logout(request: Request, env: AppEnv) {
 
 async function me(request: Request, env: AppEnv) {
   const user = await sessionUser(request, env);
-  return user ? json({ user }) : json({ user: null }, 200);
+  const headers: HeadersInit = {};
+  if (!getCookie(request, CSRF_COOKIE)) headers['Set-Cookie'] = setCookie(request, CSRF_COOKIE, randomToken(24), Math.floor(SESSION_TTL_MS / 1000), false);
+  return user ? json({ user }, 200, headers) : json({ user: null }, 200, headers);
 }
 
 async function updateProfile(request: Request, env: AppEnv) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
   let body: Record<string, unknown>;
@@ -267,6 +342,40 @@ async function updateProfile(request: Request, env: AppEnv) {
     .bind(name, bio, learningGoal, now(), result.id).run();
   const updated = await sessionUser(request, env);
   return updated ? json({ user: updated }) : errorResponse('Could not load updated profile', 500);
+}
+
+async function getSettings(request: Request, env: AppEnv) {
+  const result = await requireUser(request, env);
+  if (result instanceof Response) return result;
+  const row = await env.DB.prepare('SELECT payload_json FROM user_settings WHERE user_id = ?').bind(result.id).first<{ payload_json: string }>();
+  if (!row) return json({ settings: null });
+  try {
+    return json({ settings: normalizeSettings(JSON.parse(row.payload_json)) });
+  } catch {
+    return json({ settings: null });
+  }
+}
+
+async function updateSettings(request: Request, env: AppEnv) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
+  const result = await requireUser(request, env);
+  if (result instanceof Response) return result;
+  let body: Record<string, unknown>;
+  try { body = await parseJson(request, 32 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
+  let incoming: SettingsPayload;
+  try { incoming = normalizeSettings(body.settings); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid settings', 400); }
+  const existingRow = await env.DB.prepare('SELECT payload_json FROM user_settings WHERE user_id = ?').bind(result.id).first<{ payload_json: string }>();
+  let current: SettingsPayload = {};
+  if (existingRow) {
+    try { current = normalizeSettings(JSON.parse(existingRow.payload_json)); } catch { current = {}; }
+  }
+  const payload = mergeSettings(current, incoming);
+  await env.DB.prepare(
+    `INSERT INTO user_settings (user_id, payload_json, version, updated_at) VALUES (?, ?, 1, ?)
+     ON CONFLICT(user_id) DO UPDATE SET payload_json = excluded.payload_json, version = excluded.version, updated_at = excluded.updated_at`,
+  ).bind(result.id, JSON.stringify(payload), now()).run();
+  return json({ settings: payload });
 }
 
 async function progress(request: Request, env: AppEnv) {
@@ -287,6 +396,8 @@ function validTopicId(topicId: string) {
 }
 
 async function syncProgress(request: Request, env: AppEnv) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
   let body: Record<string, unknown>;
@@ -303,6 +414,8 @@ async function syncProgress(request: Request, env: AppEnv) {
 }
 
 async function toggleTopic(request: Request, env: AppEnv, topicId: string, table: 'progress' | 'bookmarks', enabled: boolean) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
   if (!validTopicId(topicId)) return errorResponse('Invalid topic id', 400);
@@ -325,6 +438,8 @@ export const onRequest: PagesFunction<AppEnv> = async (context) => {
     if (url.pathname === '/auth/logout' && request.method === 'POST') return logout(request, env);
     if (url.pathname === '/api/me' && request.method === 'GET') return me(request, env);
     if (url.pathname === '/api/me/profile' && request.method === 'PATCH') return updateProfile(request, env);
+    if (url.pathname === '/api/me/settings' && request.method === 'GET') return getSettings(request, env);
+    if (url.pathname === '/api/me/settings' && request.method === 'PATCH') return updateSettings(request, env);
     if (url.pathname === '/api/progress' && request.method === 'GET') return progress(request, env);
     if (url.pathname === '/api/progress/sync' && request.method === 'POST') return syncProgress(request, env);
 
