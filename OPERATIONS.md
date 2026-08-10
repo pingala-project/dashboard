@@ -35,7 +35,19 @@ gh secret set CLOUDFLARE_ACCOUNT_ID --repo pingala-project/dashboard --body "$CL
 gh secret set CLOUDFLARE_ACCOUNT_ID --repo pingala-project/landing --body "$CLOUDFLARE_ACCOUNT_ID"
 ```
 
-The API token is never stored in the repository, `.env`, workflow YAML, or browser. D1 migrations run only from a trusted `main` deployment workflow.
+`CLOUDFLARE_API_TOKEN` needs only **Account → Cloudflare Pages → Edit** for the Pingala account. The API token is never stored in the repository, `.env`, workflow YAML, or browser.
+
+## Configure the D1 migration credential
+
+Use a separate token with only **Account → D1 → Edit**, scoped to the same Cloudflare account. This secret is used exclusively by the trusted dashboard migration workflow.
+
+```sh
+read -s CLOUDFLARE_D1_API_TOKEN
+export CLOUDFLARE_D1_API_TOKEN
+printf '%s' "$CLOUDFLARE_D1_API_TOKEN" | gh secret set CLOUDFLARE_D1_API_TOKEN --repo pingala-project/dashboard
+```
+
+D1 migrations run only from a trusted `main` workflow.
 
 ## Configure the Pages runtime for GitHub login
 
