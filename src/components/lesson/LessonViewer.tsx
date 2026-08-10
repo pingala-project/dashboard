@@ -15,6 +15,9 @@ import {
 } from 'hugeicons-react';
 import confetti from 'canvas-confetti';
 import { renderRichText } from '../../utils/formatContent';
+import { useSettings } from '../../context/SettingsContext';
+import { RichMediaBlock } from './RichMediaBlock';
+import { ReadingNotes } from './ReadingNotes';
 
 interface LessonViewerProps {
   topic: Topic;
@@ -45,6 +48,7 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
   onBackToCourse,
   onBackToAll,
 }) => {
+  const { settings } = useSettings();
   const activeContributor = topic.contributor || course.contributor || {
     name: 'Pingala Contributors',
     github: 'rishabh',
@@ -55,10 +59,15 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
   const handleToggleComplete = () => {
     if (!isCompleted) {
       try {
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        if (settings.learning.confettiEnabled) {
+          confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        }
       } catch { /* ignore */ }
     }
     onToggleComplete();
+    if (!isCompleted && settings.learning.autoAdvanceOnComplete && topic.nextTopicId) {
+      window.setTimeout(() => onNavigateTopic(topic.nextTopicId!), 450);
+    }
   };
 
   const renderCalloutIcon = (variant?: string) => {
@@ -223,6 +232,13 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
                   </div>
                 );
 
+              case 'image':
+              case 'chart':
+              case 'embed':
+              case 'attachment':
+              case 'quote':
+                return <RichMediaBlock key={bIdx} block={block} />;
+
               default:
                 return null;
             }
@@ -233,6 +249,8 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
         <div className="lesson-checkpoint-section">
           <Checkpoint checkpoints={topic.checkpoints} />
         </div>
+
+        <ReadingNotes topicId={topic.id} />
 
         {/* Bottom navigation */}
         <nav className="lesson-bottom-nav">

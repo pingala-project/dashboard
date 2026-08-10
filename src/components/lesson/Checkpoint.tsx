@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { CheckpointQuestion } from '../../types/curriculum';
 import { CheckmarkCircle02Icon, Cancel01Icon, HelpCircleIcon } from 'hugeicons-react';
 import { renderRichText } from '../../utils/formatContent';
+import { useSettings } from '../../context/SettingsContext';
 
 interface CheckpointProps {
   checkpoints: CheckpointQuestion[];
@@ -9,6 +10,7 @@ interface CheckpointProps {
 
 export const Checkpoint: React.FC<CheckpointProps> = ({ checkpoints }) => {
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
+  const { settings } = useSettings();
 
   if (!checkpoints || checkpoints.length === 0) return null;
 
@@ -79,7 +81,7 @@ export const Checkpoint: React.FC<CheckpointProps> = ({ checkpoints }) => {
                 })}
               </div>
 
-              {isAnswered && (
+              {isAnswered && settings.learning.instantQuizFeedback && (
                 <div className={`checkpoint-feedback-box ${isCorrect ? 'correct' : 'incorrect'}`}>
                   <div className="feedback-status-line">
                     {isCorrect ? (

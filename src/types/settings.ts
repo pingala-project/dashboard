@@ -1,6 +1,6 @@
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-export type FontFamilyChoice = 'sans' | 'serif' | 'mono' | 'handwritten';
+export type FontFamilyChoice = 'sans' | 'serif' | 'mono' | 'handwritten' | 'atkinson' | 'lexend';
 
 export type FontSizeChoice = 'compact' | 'standard' | 'large';
 

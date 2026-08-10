@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { contributionGuideUrl, dashboardRepositoryUrl, issuesUrl, releasesUrl } from '../../config/project';
 import type {
   ThemeMode,
@@ -66,6 +67,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 }) => {
   const { settings, updateProfile, updateAppearance, updateDisplay, updateLearning, updateAccentColor } = useSettings();
   const { user, login, logout } = useAuth();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('account');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -82,14 +84,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // Inline edit states
   const [editingName, setEditingName] = useState(false);
-  const [editingEmail, setEditingEmail] = useState(false);
+  const [editingBio, setEditingBio] = useState(false);
   const [editingGoal, setEditingGoal] = useState(false);
 
   const [tempName, setTempName] = useState(settings.profile.name || 'Rishabh');
-  const [tempEmail, setTempEmail] = useState(
-    settings.profile.email || `${(settings.profile.github || 'rishabh').toLowerCase()}@nst.rishihood.edu.in`
-  );
+  const [tempBio, setTempBio] = useState(settings.profile.bio || '');
   const [tempGoal, setTempGoal] = useState(settings.profile.learningGoal || 'Master Deep Learning & Transformers');
+
+  const displayName = user?.name || settings.profile.name || 'Guest learner';
+  const displayEmail = user?.email || settings.profile.email || 'Sign in to fetch your GitHub email';
+  const avatarUrl = user?.avatarUrl || settings.profile.avatarUrl || (user?.login ? `https://github.com/${user.login}.png?size=160` : '');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -101,7 +105,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleLogout = () => {
     setShowLogoutConfirm(false);
-    void logout();
+    void logout().then(() => showToast('Logged out', 'Your Pingala session has been closed.', 'success'));
   };
 
   return (
@@ -132,8 +136,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="mobbin-account-header">
               <div className="mobbin-avatar-wrapper">
                 <img
-                  src={`https://github.com/${settings.profile.github || 'rishabh'}.png?size=160`}
-                  alt={settings.profile.name || 'Rishabh'}
+                  src={avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${settings.profile.github || 'pingala'}`}
+                  alt={displayName}
                   className="mobbin-hero-avatar"
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${settings.profile.github || 'pingala'}`;
@@ -141,10 +145,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 />
               </div>
 
-              <h1 className="mobbin-hero-name">{settings.profile.name || 'Rishabh'}</h1>
-              <p className="mobbin-hero-email">
-                {settings.profile.email || `${(settings.profile.github || 'rishabh').toLowerCase()}@nst.rishihood.edu.in`}
-              </p>
+              <h1 className="mobbin-hero-name">{displayName}</h1>
+              <p className="mobbin-hero-email">{displayEmail}</p>
             </div>
 
             {/* Personal Details Section */}
@@ -157,7 +159,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <div className="mobbin-row-left">
                     <div className="mobbin-row-label">Name</div>
                     {!editingName ? (
-                      <div className="mobbin-row-val">{settings.profile.name || 'Rishabh'}</div>
+                      <div className="mobbin-row-val">{displayName}</div>
                     ) : (
                       <input
                         className="mobbin-row-input"
@@ -167,6 +169,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             updateProfile({ name: tempName });
+                            showToast('Name updated', 'Your profile name was saved.', 'success');
                             setEditingName(false);
                           }
                           if (e.key === 'Escape') setEditingName(false);
@@ -180,6 +183,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                         className="mobbin-save-btn"
                         onClick={() => {
                           updateProfile({ name: tempName });
+                          showToast('Name updated', 'Your profile name was saved.', 'success');
                           setEditingName(false);
                         }}
                       >
@@ -189,7 +193,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       <button
                         className="mobbin-edit-btn"
                         onClick={() => {
-                          setTempName(settings.profile.name || 'Rishabh');
+                          setTempName(displayName);
                           setEditingName(true);
                         }}
                       >
@@ -199,56 +203,51 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   </div>
                 </div>
 
-                {/* Row 2: Email */}
+                {/* Row 2: Email fetched from GitHub */}
                 <div className="mobbin-row">
                   <div className="mobbin-row-left">
                     <div className="mobbin-row-label">Email address</div>
-                    {!editingEmail ? (
-                      <div className="mobbin-row-val">
-                        {settings.profile.email || `${(settings.profile.github || 'rishabh').toLowerCase()}@nst.rishihood.edu.in`}
-                      </div>
+                    <div className="mobbin-row-val">{displayEmail}</div>
+                  </div>
+                  <div className="mobbin-row-right">
+                    <span className="mobbin-source-badge">GitHub</span>
+                  </div>
+                </div>
+
+                {/* Row 3: Bio */}
+                <div className="mobbin-row">
+                  <div className="mobbin-row-left">
+                    <div className="mobbin-row-label">Short bio</div>
+                    {!editingBio ? (
+                      <div className="mobbin-row-val">{settings.profile.bio || 'Add a sentence about what you are learning.'}</div>
                     ) : (
-                      <input
-                        className="mobbin-row-input"
-                        value={tempEmail}
+                      <textarea
+                        className="mobbin-row-input mobbin-row-textarea"
+                        value={tempBio}
                         autoFocus
-                        onChange={(e) => setTempEmail(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            updateProfile({ email: tempEmail });
-                            setEditingEmail(false);
-                          }
-                          if (e.key === 'Escape') setEditingEmail(false);
-                        }}
+                        rows={3}
+                        onChange={(e) => setTempBio(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingBio(false); }}
                       />
                     )}
                   </div>
                   <div className="mobbin-row-right">
-                    {editingEmail ? (
-                      <button
-                        className="mobbin-save-btn"
-                        onClick={() => {
-                          updateProfile({ email: tempEmail });
-                          setEditingEmail(false);
-                        }}
-                      >
-                        Save
-                      </button>
+                    {editingBio ? (
+                      <button className="mobbin-save-btn" onClick={() => {
+                        updateProfile({ bio: tempBio });
+                        setEditingBio(false);
+                        showToast('Bio updated', 'Your profile bio was saved.', 'success');
+                      }}>Save</button>
                     ) : (
-                      <button
-                        className="mobbin-edit-btn"
-                        onClick={() => {
-                          setTempEmail(settings.profile.email || `${(settings.profile.github || 'rishabh').toLowerCase()}@nst.rishihood.edu.in`);
-                          setEditingEmail(true);
-                        }}
-                      >
-                        Edit
-                      </button>
+                      <button className="mobbin-edit-btn" onClick={() => {
+                        setTempBio(settings.profile.bio || '');
+                        setEditingBio(true);
+                      }}>Edit</button>
                     )}
                   </div>
                 </div>
 
-                {/* Row 3: GitHub Handle */}
+                {/* Row 4: GitHub Handle */}
                 <div className="mobbin-row">
                   <div className="mobbin-row-left">
                     <div className="mobbin-row-label">GitHub username</div>
@@ -277,7 +276,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   </div>
                 </div>
 
-                {/* Row 4: Learning Goal */}
+                {/* Row 5: Learning Goal */}
                 <div className="mobbin-row">
                   <div className="mobbin-row-left">
                     <div className="mobbin-row-label">Learning goal</div>
@@ -295,6 +294,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             updateProfile({ learningGoal: tempGoal });
+                            showToast('Learning goal updated', 'Your goal was saved to your account.', 'success');
                             setEditingGoal(false);
                           }
                           if (e.key === 'Escape') setEditingGoal(false);
@@ -308,6 +308,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                         className="mobbin-save-btn"
                         onClick={() => {
                           updateProfile({ learningGoal: tempGoal });
+                          showToast('Learning goal updated', 'Your goal was saved to your account.', 'success');
                           setEditingGoal(false);
                         }}
                       >
@@ -465,7 +466,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     className={`accent-swatch ${accentColor === c.value ? 'active' : ''}`}
                     style={{ background: c.value }}
                     title={c.label}
-                    onClick={() => updateAccentColor(c.value)}
+                    onClick={() => {
+                      updateAccentColor(c.value);
+                      showToast('Accent updated', `${c.label} is now your accent color.`, 'success');
+                    }}
                   >
                     {accentColor === c.value && (
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -516,12 +520,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   { value: 'sans',        charClass: 'sans',        name: 'Modern Sans',   sub: 'Plus Jakarta Sans' },
                   { value: 'serif',       charClass: 'serif',       name: 'Editorial Serif',sub: 'Georgia' },
                   { value: 'mono',        charClass: 'mono',        name: 'Monospace',     sub: 'JetBrains Mono' },
-                  { value: 'handwritten', charClass: 'handwritten', name: 'Handwritten',   sub: 'Caveat', beta: true },
+                  { value: 'handwritten', charClass: 'handwritten', name: 'Handwritten',   sub: 'Kalam', beta: true },
+                  { value: 'atkinson',    charClass: 'atkinson',    name: 'Atkinson',      sub: 'Readable sans' },
+                  { value: 'lexend',      charClass: 'lexend',      name: 'Lexend',        sub: 'Reading focus' },
                 ] as { value: FontFamilyChoice; charClass: string; name: string; sub: string; beta?: boolean }[]).map((f) => (
                   <button
                     key={f.value}
                     className={`mobbin-selector-card ${settings.display.fontFamily === f.value ? 'active' : ''}`}
-                    onClick={() => updateDisplay({ fontFamily: f.value })}
+                    onClick={() => {
+                      updateDisplay({ fontFamily: f.value });
+                      showToast('Reading font updated', `${f.name} is now used for lessons.`, 'success');
+                    }}
                   >
                     {f.beta && <span className="mobbin-selector-badge">β</span>}
                     <span className={`mobbin-font-glyph ${f.charClass}`}>Ag</span>
@@ -543,7 +552,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <button
                     key={s.value}
                     className={`mobbin-pill-opt ${settings.display.fontSize === s.value ? 'active' : ''}`}
-                    onClick={() => updateDisplay({ fontSize: s.value })}
+                    onClick={() => {
+                      updateDisplay({ fontSize: s.value });
+                      showToast('Text size updated', `${s.label} is now active.`, 'success');
+                    }}
                   >
                     {s.label}
                   </button>
@@ -562,7 +574,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <button
                     key={w.value}
                     className={`mobbin-pill-opt ${settings.display.readingWidth === w.value ? 'active' : ''}`}
-                    onClick={() => updateDisplay({ readingWidth: w.value })}
+                    onClick={() => {
+                      updateDisplay({ readingWidth: w.value });
+                      showToast('Reading width updated', `${w.label} is now active.`, 'success');
+                    }}
                   >
                     {w.label}
                   </button>
@@ -631,6 +646,42 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <span className="mobbin-toggle-track">
                       <span className="mobbin-toggle-knob" />
                     </span>
+                  </label>
+                </div>
+
+                <div className="settings-toggle-row">
+                  <div>
+                    <div className="toggle-info-label">Line numbers in code</div>
+                    <div className="toggle-info-sub">Show a line number gutter beside lesson code examples.</div>
+                  </div>
+                  <label className="mobbin-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.display.enableLineNumbers}
+                      onChange={(e) => {
+                        updateDisplay({ enableLineNumbers: e.target.checked });
+                        showToast('Code display updated', e.target.checked ? 'Line numbers enabled.' : 'Line numbers hidden.', 'success');
+                      }}
+                    />
+                    <span className="mobbin-toggle-track"><span className="mobbin-toggle-knob" /></span>
+                  </label>
+                </div>
+
+                <div className="settings-toggle-row">
+                  <div>
+                    <div className="toggle-info-label">Copy code comments</div>
+                    <div className="toggle-info-sub">Keep explanatory comments when copying code from a lesson.</div>
+                  </div>
+                  <label className="mobbin-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.learning.copyCodeWithComments}
+                      onChange={(e) => {
+                        updateLearning({ copyCodeWithComments: e.target.checked });
+                        showToast('Copy preference updated', e.target.checked ? 'Comments will be included.' : 'Comments will be removed.', 'success');
+                      }}
+                    />
+                    <span className="mobbin-toggle-track"><span className="mobbin-toggle-knob" /></span>
                   </label>
                 </div>
               </div>

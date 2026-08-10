@@ -11,6 +11,7 @@ interface UserRow {
   id: string;
   github_id: string;
   github_login: string;
+  github_email: string | null;
   display_name: string;
   avatar_url: string | null;
   bio: string;
@@ -25,6 +26,12 @@ interface GitHubProfile {
   bio: string | null;
 }
 
+interface GitHubEmail {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+}
+
 interface GitHubTokenResponse {
   access_token?: string;
   error?: string;
@@ -34,6 +41,7 @@ interface SessionUser {
   id: string;
   githubId: string;
   login: string;
+  email: string | null;
   name: string;
   avatarUrl: string | null;
   bio: string;
@@ -43,7 +51,7 @@ interface SessionUser {
 interface SettingsPayload {
   profile?: { email?: string };
   appearance?: { theme?: 'light' | 'dark' | 'system'; codeTheme?: 'onedark' | 'github' | 'monokai' };
-  display?: { fontFamily?: 'sans' | 'serif' | 'mono' | 'handwritten'; fontSize?: 'compact' | 'standard' | 'large'; readingWidth?: 'standard' | 'spacious'; enableLineNumbers?: boolean };
+  display?: { fontFamily?: 'sans' | 'serif' | 'mono' | 'handwritten' | 'atkinson' | 'lexend'; fontSize?: 'compact' | 'standard' | 'large'; readingWidth?: 'standard' | 'spacious'; enableLineNumbers?: boolean };
   learning?: { confettiEnabled?: boolean; autoAdvanceOnComplete?: boolean; instantQuizFeedback?: boolean; copyCodeWithComments?: boolean };
   accentColor?: string;
 }
@@ -203,6 +211,7 @@ function userPayload(user: UserRow): SessionUser {
     id: user.id,
     githubId: user.github_id,
     login: user.github_login,
+    email: user.github_email,
     name: user.display_name,
     avatarUrl: user.avatar_url,
     bio: user.bio,
@@ -215,7 +224,7 @@ async function sessionUser(request: Request, env: AppEnv): Promise<SessionUser |
   if (!rawToken || !env.DB) return null;
   const tokenHash = await digest(rawToken, env.SESSION_SECRET);
   const result = await env.DB.prepare(
-    `SELECT u.id, u.github_id, u.github_login, u.display_name, u.avatar_url, u.bio, u.learning_goal
+    `SELECT u.id, u.github_id, u.github_login, u.github_email, u.display_name, u.avatar_url, u.bio, u.learning_goal
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
   ).bind(tokenHash, now()).first<UserRow>();
@@ -294,15 +303,25 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
   if (!tokenData.access_token) return redirect(request, `${appOrigin(request, env)}/?auth_error=${encodeURIComponent(tokenData.error || 'token_exchange')}`);
 
   const profile = await githubJson<GitHubProfile>('https://api.github.com/user', tokenData.access_token);
+  let githubEmail: string | null = null;
+  try {
+    const githubEmails = await githubJson<GitHubEmail[]>('https://api.github.com/user/emails', tokenData.access_token);
+    githubEmail = githubEmails.find((entry) => entry.primary && entry.verified)?.email
+      || githubEmails.find((entry) => entry.verified)?.email
+      || null;
+  } catch {
+    // Public GitHub profiles can still authenticate if the email endpoint is unavailable.
+  }
   const timestamp = now();
-  const existing = await env.DB.prepare('SELECT id FROM users WHERE github_id = ?').bind(String(profile.id)).first<{ id: string }>();
+  const existing = await env.DB.prepare('SELECT id, github_email FROM users WHERE github_id = ?').bind(String(profile.id)).first<{ id: string; github_email: string | null }>();
   const userId = existing?.id || crypto.randomUUID();
   await env.DB.prepare(
-    `INSERT INTO users (id, github_id, github_login, display_name, avatar_url, bio, learning_goal, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, '', '', ?, ?)
+    `INSERT INTO users (id, github_id, github_login, github_email, display_name, avatar_url, bio, learning_goal, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?)
      ON CONFLICT(github_id) DO UPDATE SET github_login = excluded.github_login,
-       display_name = excluded.display_name, avatar_url = excluded.avatar_url, updated_at = excluded.updated_at`,
-  ).bind(userId, String(profile.id), profile.login, profile.name || profile.login, profile.avatar_url, timestamp, timestamp).run();
+       github_email = excluded.github_email, display_name = excluded.display_name,
+       avatar_url = excluded.avatar_url, updated_at = excluded.updated_at`,
+  ).bind(userId, String(profile.id), profile.login, githubEmail || existing?.github_email || null, profile.name || profile.login, profile.avatar_url, timestamp, timestamp).run();
 
   const rawSession = randomToken(32);
   await env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')

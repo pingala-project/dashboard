@@ -19,6 +19,17 @@ const VALID_BLOCK_TYPES = new Set([
   'math',
   'list',
   'key_takeaways',
+  'image',
+  'chart',
+  'embed',
+  'attachment',
+  'quote',
+]);
+
+const EMBED_HOSTS = new Set([
+  'www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'youtu.be',
+  'player.vimeo.com', 'vimeo.com', 'www.desmos.com', 'desmos.com',
+  'observablehq.com', 'www.observablehq.com', 'codepen.io', 'codesandbox.io', 'stackblitz.com',
 ]);
 
 const toPosix = (value) => value.split(path.sep).join('/');
@@ -46,6 +57,17 @@ function parseDirectiveHeader(line) {
   const match = line.match(/^:::([a-z_]+)(?:\s+(.*))?$/i);
   if (!match) return null;
   return { type: match[1].toLowerCase(), title: match[2]?.trim() || undefined };
+}
+
+function parseYamlDirectiveBody(body, filePath, type) {
+  let value;
+  try {
+    value = parse(body.join('\n')) || {};
+  } catch (error) {
+    throw new Error(`${filePath}: invalid ${type} directive YAML: ${error.message}`);
+  }
+  assert(value && typeof value === 'object' && !Array.isArray(value), `${filePath}: ${type} directive needs YAML fields`);
+  return value;
 }
 
 function flushParagraph(blocks, lines) {
@@ -83,16 +105,25 @@ function parseMarkdown(markdown) {
       index += 1;
 
       const text = body.join('\n').trim();
-      if (directive.type === 'math') {
+      if (['image', 'chart', 'embed', 'attachment'].includes(directive.type)) {
+        blocks.push({ type: directive.type, ...parseYamlDirectiveBody(body, 'content.md', directive.type), ...(directive.title ? { title: directive.title } : {}) });
+      } else if (directive.type === 'math') {
         blocks.push({ type: 'math', math: text, ...(directive.title ? { caption: directive.title } : {}) });
       } else if (directive.type === 'code') {
         const [language, ...codeLines] = body;
-        blocks.push({ type: 'code', language: directive.title || language || 'text', code: codeLines.join('\n').trim() });
+        const hasLanguageLine = !directive.title && /^[\w+-]+$/.test(language || '');
+        blocks.push({
+          type: 'code',
+          language: directive.title || (hasLanguageLine ? language : 'text'),
+          code: (hasLanguageLine ? codeLines : body).join('\n').trim(),
+        });
       } else if (directive.type === 'list' || directive.type === 'key_takeaways') {
         blocks.push({
           type: directive.type,
           items: body.filter((item) => item.trim()).map((item) => item.replace(/^\s*[-*]\s+/, '').trim()),
         });
+      } else if (directive.type === 'quote') {
+        blocks.push({ type: 'quote', ...(directive.title ? { caption: directive.title } : {}), text });
       } else {
         blocks.push({
           type: directive.type === 'key-takeaways' ? 'key_takeaways' : 'callout',
@@ -160,7 +191,7 @@ function validateBlocks(blocks, filePath) {
   assert(Array.isArray(blocks), `${filePath}: blocks must be an array`);
   blocks.forEach((block, index) => {
     assert(VALID_BLOCK_TYPES.has(block.type), `${filePath}: invalid block type at ${index}: ${block.type}`);
-    if (['paragraph', 'heading2', 'heading3', 'callout'].includes(block.type)) {
+    if (['paragraph', 'heading2', 'heading3', 'callout', 'quote'].includes(block.type)) {
       assert(typeof block.text === 'string' && block.text.trim(), `${filePath}: block ${index} needs text`);
     }
     if (['list', 'key_takeaways'].includes(block.type)) {
@@ -177,6 +208,19 @@ function validateBlocks(blocks, filePath) {
       } catch (error) {
         throw new Error(`${filePath}: invalid KaTeX in block ${index}: ${error.message}`);
       }
+    }
+    if (['image', 'chart'].includes(block.type)) {
+      assert(typeof block.src === 'string' && /^(https:\/\/|\/)/i.test(block.src), `${filePath}: ${block.type} needs an https or relative src`);
+      assert(typeof block.alt === 'string' && block.alt.trim(), `${filePath}: ${block.type} needs alt text`);
+    }
+    if (block.type === 'embed') {
+      assert(typeof block.url === 'string' && /^https:\/\//i.test(block.url), `${filePath}: embed needs an https url`);
+      const hostname = new URL(block.url).hostname;
+      assert(EMBED_HOSTS.has(hostname), `${filePath}: embed host is not on the allowlist: ${hostname}`);
+    }
+    if (block.type === 'attachment') {
+      assert(typeof block.url === 'string' && /^(https:\/\/|\/)/i.test(block.url), `${filePath}: attachment needs an https or relative url`);
+      assert(typeof block.label === 'string' && block.label.trim(), `${filePath}: attachment needs a label`);
     }
   });
 }

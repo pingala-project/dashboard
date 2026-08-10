@@ -4,6 +4,7 @@ import {
   UserIcon, 
 } from 'hugeicons-react';
 import { useSettings } from '../../context/SettingsContext';
+import { useAuth } from '../../context/AuthContext';
 import { ProfileDropdown } from '../profile/ProfileDropdown';
 
 interface TopBarProps {
@@ -28,8 +29,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   bookmarkedCount,
 }) => {
   const { settings } = useSettings();
+  const { user } = useAuth();
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
-  const avatarUrl = settings.profile.avatarUrl || `https://github.com/${settings.profile.github}.png?size=64`;
+  const avatarUrl = user?.avatarUrl || settings.profile.avatarUrl || (settings.profile.github ? `https://github.com/${settings.profile.github}.png?size=64` : '');
+  const profileName = user?.name || settings.profile.name || 'Guest learner';
+  const profileHandle = user?.login || settings.profile.github || 'guest';
 
   return (
     <header className="topbar mobbin-topbar">
@@ -94,15 +98,15 @@ export const TopBar: React.FC<TopBarProps> = ({
               ref={avatarBtnRef}
               className={`topbar-avatar-btn ${isProfileDropdownOpen ? 'active' : ''}`}
               onClick={onToggleProfileDropdown}
-              title={`Profile (@${settings.profile.github})`}
+              title={`Profile (@${profileHandle})`}
             >
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
-                  alt={settings.profile.name}
+                  alt={profileName}
                   className="mobbin-user-avatar"
                   onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${settings.profile.github || 'pingala'}`;
+                    (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${profileHandle}`;
                   }}
                 />
               ) : (

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Copy01Icon, CheckmarkCircle02Icon } from 'hugeicons-react';
 import Prism from 'prismjs';
+import { useSettings } from '../../context/SettingsContext';
 import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-javascript';
@@ -17,6 +18,7 @@ interface CodeBlockProps {
 
 export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'python' }) => {
   const [copied, setCopied] = useState<boolean>(false);
+  const { settings } = useSettings();
 
   const cleanLang = (language || 'python').toLowerCase().trim();
 
@@ -34,7 +36,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'python' 
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(code);
+      const copyText = settings.learning.copyCodeWithComments
+        ? code
+        : code.split('\n').filter((line) => !/^\s*(#|\/\/|--)/.test(line)).join('\n');
+      await navigator.clipboard.writeText(copyText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -60,11 +65,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'python' 
           )}
         </button>
       </div>
-      <pre className={`code-block-body language-${cleanLang}`}>
-        <code 
-          className={`language-${cleanLang}`}
-          dangerouslySetInnerHTML={{ __html: highlightedHtml }} 
-        />
+      <pre className={`code-block-body language-${cleanLang} ${settings.display.enableLineNumbers ? 'has-line-numbers' : ''}`}>
+        <code className={`language-${cleanLang}`}>
+          {highlightedHtml.split('\n').map((line, index) => (
+            <span className="code-line" key={`${index}-${line.slice(0, 12)}`} dangerouslySetInnerHTML={{ __html: line || ' ' }} />
+          ))}
+        </code>
       </pre>
     </div>
   );

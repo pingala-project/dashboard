@@ -22,6 +22,9 @@ const isSafeHref = (href: string): boolean => /^(https?:\/\/|\/|#)/i.test(href.t
  * - Bold: **text**
  * - Italic: *text*
  * - Inline code: `code`
+ * - Highlights: ==important==
+ * - Strikethrough: ~~removed~~
+ * - Images: ![alt](https://...)
  * - Links: [title](url)
  */
 export function renderRichText(content?: string): React.ReactNode {
@@ -37,7 +40,10 @@ export function renderRichText(content?: string): React.ReactNode {
 
   const DELIMITERS = [
     { re: /\$([^$\n]+)\$/, type: 'math' },
+    { re: /!\[([^\]]*)\]\(([^)]+)\)/, type: 'image' },
     { re: /\*\*([^*]+)\*\*/, type: 'bold' },
+    { re: /==([^=\n]+)==/, type: 'highlight' },
+    { re: /~~([^~\n]+)~~/, type: 'strike' },
     { re: /\*([^*]+)\*/, type: 'italic' },
     { re: /`([^`]+)`/, type: 'code' },
     { re: /\[([^\]]+)\]\(([^)]+)\)/, type: 'link' },
@@ -99,6 +105,28 @@ export function renderRichText(content?: string): React.ReactNode {
             {earliestMatch[1]}
           </code>
         );
+        break;
+      case 'highlight':
+        nodes.push(<mark key={globalIdx++} className="lesson-highlight">{earliestMatch[1]}</mark>);
+        break;
+      case 'strike':
+        nodes.push(<del key={globalIdx++} className="lesson-strike">{earliestMatch[1]}</del>);
+        break;
+      case 'image':
+        if (isSafeHref(earliestMatch[2])) {
+          nodes.push(
+            <img
+              key={globalIdx++}
+              src={earliestMatch[2]}
+              alt={earliestMatch[1] || 'Lesson illustration'}
+              className="lesson-inline-image"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          );
+        } else {
+          nodes.push(earliestMatch[1]);
+        }
         break;
       case 'link':
         if (isSafeHref(earliestMatch[2])) {
