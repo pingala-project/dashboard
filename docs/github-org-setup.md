@@ -19,7 +19,7 @@ Recommended organization settings:
 6. Protect `main` with required CI checks, required CODEOWNER approval, stale-review dismissal, resolved conversations, and no force pushes.
 7. Configure GitHub OAuth with callback `/auth/github/callback` and store the client ID/secret as **Cloudflare Pages project secrets**.
 8. Create a D1 database, replace the placeholder ID in `wrangler.jsonc`, then run the migration workflow.
-9. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions repository secrets. Add `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `SESSION_SECRET` as Cloudflare Pages project secrets.
+9. Add `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_D1_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions repository secrets. Add `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `SESSION_SECRET` as Cloudflare Pages project secrets.
 
 The `.github` files in this repository can seed the organization-level community-health repository. Subject repositories should reuse the same content workflow and carry their own CODEOWNERS file.
 
@@ -39,6 +39,7 @@ Then configure the GitHub Actions repository secrets used only by trusted deploy
 ```sh
 gh secret set CLOUDFLARE_ACCOUNT_ID --repo pingala-project/dashboard
 gh secret set CLOUDFLARE_API_TOKEN --repo pingala-project/dashboard
+gh secret set CLOUDFLARE_D1_API_TOKEN --repo pingala-project/dashboard
 ```
 
 Configure the OAuth values in the Pages project with Wrangler instead; repository secrets are not available to Pages Functions at runtime:
@@ -49,4 +50,4 @@ printf '%s' "$GITHUB_CLIENT_SECRET" | npx wrangler pages secret put GITHUB_CLIEN
 printf '%s' "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --project-name=pingala-dashboard
 ```
 
-The Cloudflare token should be limited to the Pingala account's Pages deployment and D1 migration permissions.
+Use separate least-privilege Cloudflare tokens: `CLOUDFLARE_API_TOKEN` needs Account → Cloudflare Pages → Edit; `CLOUDFLARE_D1_API_TOKEN` needs Account → D1 → Edit. Both must be scoped to the account identified by `CLOUDFLARE_ACCOUNT_ID`.
