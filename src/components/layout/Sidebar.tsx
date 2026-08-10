@@ -205,7 +205,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           const subtopics = topic.blocks
                             .map((b, idx) => {
                               if (b.type === 'heading2' || b.type === 'heading3') {
-                                return { id: `heading-${idx}`, title: b.text || '' };
+                                const cleanTitle = b.text ? b.text.replace(/^\d+\.\s*/, '') : '';
+                                return { id: `heading-${idx}`, title: cleanTitle };
                               }
                               return null;
                             })

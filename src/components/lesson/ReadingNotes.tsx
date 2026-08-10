@@ -12,16 +12,23 @@ interface SelectionState {
   end: number | null;
 }
 
-function markSavedSelections(notes: ReadingNote[]) {
-  const root = document.querySelector('.lesson-blocks');
-  if (!root) return () => undefined;
+interface HighlightOverlay {
+  id: string;
+  noteId: string;
+  style: NoteStyle;
+  color: string;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
 
-  root.querySelectorAll('[data-reading-note-id]').forEach((element) => {
-    const parent = element.parentNode;
-    if (!parent) return;
-    while (element.firstChild) parent.insertBefore(element.firstChild, element);
-    parent.removeChild(element);
-  });
+function computeHighlightRects(notes: ReadingNote[]): HighlightOverlay[] {
+  const root = document.querySelector('.lesson-blocks') as HTMLElement;
+  if (!root) return [];
+
+  const overlays: HighlightOverlay[] = [];
+  const rootRect = root.getBoundingClientRect();
 
   notes.forEach((note) => {
     if (note.style === 'plain') return;
@@ -40,26 +47,26 @@ function markSavedSelections(notes: ReadingNote[]) {
     const range = document.createRange();
     range.setStart(node, start);
     range.setEnd(node, start + note.sourceText.length);
-    const mark = document.createElement('span');
-    mark.dataset.readingNoteId = note.id;
-    mark.className = `reading-note-mark note-style-${note.style}`;
-    mark.style.setProperty('--reading-note-color', note.color);
-    try {
-      range.surroundContents(mark);
-    } catch {
-      // Selections spanning multiple rendered nodes remain visible in the note card.
-    }
+    
+    const rects = Array.from(range.getClientRects());
+    rects.forEach((rect, idx) => {
+      overlays.push({
+        id: `${note.id}-${idx}`,
+        noteId: note.id,
+        style: note.style,
+        color: note.color,
+        top: rect.top - rootRect.top,
+        left: rect.left - rootRect.left,
+        width: rect.width,
+        height: rect.height
+      });
+    });
   });
 
-  return () => {
-    root.querySelectorAll('[data-reading-note-id]').forEach((element) => {
-      const parent = element.parentNode;
-      if (!parent) return;
-      while (element.firstChild) parent.insertBefore(element.firstChild, element);
-      parent.removeChild(element);
-    });
-  };
+  return overlays;
 }
+
+import { createPortal } from 'react-dom';
 
 export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
   const { user, login, refreshNotes, createNote, updateNote, deleteNote } = useAuth();
@@ -72,6 +79,8 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [overlays, setOverlays] = useState<HighlightOverlay[]>([]);
+
   useEffect(() => {
     let active = true;
     setNotes([]);
@@ -82,7 +91,13 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
     return () => { active = false; };
   }, [refreshNotes, topicId, user]);
 
-  useEffect(() => markSavedSelections(notes), [notes]);
+  useEffect(() => {
+    // Recompute overlays whenever notes change or window resizes
+    const updateOverlays = () => setOverlays(computeHighlightRects(notes));
+    updateOverlays();
+    window.addEventListener('resize', updateOverlays);
+    return () => window.removeEventListener('resize', updateOverlays);
+  }, [notes]);
 
   useEffect(() => {
     const handleSelection = () => {
@@ -170,6 +185,26 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
 
   return (
     <div className="reading-notes-shell">
+      {overlays.length > 0 &&
+        document.querySelector('.lesson-blocks') &&
+        createPortal(
+          overlays.map(overlay => (
+            <div
+              key={overlay.id}
+              className={`reading-note-mark note-style-${overlay.style}`}
+              style={{
+                position: 'absolute',
+                top: overlay.top,
+                left: overlay.left,
+                width: overlay.width,
+                height: overlay.height,
+                '--reading-note-color': overlay.color
+              } as React.CSSProperties}
+            />
+          )),
+          document.querySelector('.lesson-blocks') as HTMLElement
+        )}
+
       {selection && !isOpen && (
         <div className="selection-note-toolbar" style={{ top: selection.top, left: selection.left }}>
           <button onClick={() => beginNote('highlight')}><span className="selection-highlight-swatch" /> Highlight</button>

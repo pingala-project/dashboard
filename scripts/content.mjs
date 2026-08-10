@@ -59,7 +59,7 @@ function normalizeContributor(contributor) {
 }
 
 function parseDirectiveHeader(line) {
-  const match = line.match(/^:::([a-z_]+)(?:\s+(.*))?$/i);
+  const match = line.match(/^:::([a-z0-9_-]+)(?:\s+(.*))?$/i);
   if (!match) return null;
   return { type: match[1].toLowerCase(), title: match[2]?.trim() || undefined };
 }
@@ -105,6 +105,7 @@ function tokenSimilarity(left, right) {
 function parseMarkdown(markdown) {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
+  const checkpoints = [];
   const paragraph = [];
   let index = 0;
 
@@ -132,6 +133,13 @@ function parseMarkdown(markdown) {
       const text = body.join('\n').trim();
       if (['image', 'chart', 'embed', 'attachment'].includes(directive.type)) {
         blocks.push({ type: directive.type, ...parseYamlDirectiveBody(body, 'content.md', directive.type), ...(directive.title ? { title: directive.title } : {}) });
+      } else if (directive.type === 'checkpoint') {
+        const yamlData = parseYamlDirectiveBody(body, 'content.md', 'checkpoint');
+        checkpoints.push({
+          id: Math.random().toString(36).substring(2, 10), // Deterministic pseudo-random ID is fine for local builds
+          question: directive.title || yamlData.question,
+          ...yamlData
+        });
       } else if (directive.type === 'math') {
         blocks.push({ type: 'math', math: text, ...(directive.title ? { caption: directive.title } : {}) });
       } else if (directive.type === 'code') {
@@ -205,7 +213,7 @@ function parseMarkdown(markdown) {
   }
 
   flushParagraph(blocks, paragraph);
-  return blocks;
+  return { blocks, checkpoints };
 }
 
 function assert(condition, message) {
@@ -253,6 +261,9 @@ function validateBlocks(blocks, filePath) {
 
 function normalizeMediaUrl(value) {
   if (typeof value !== 'string' || !value.startsWith('./')) return value;
+  if (value.startsWith('./assets/')) {
+    return `/content-assets/${value.slice('./assets/'.length)}`;
+  }
   return `/content-assets/${value.slice(2)}`;
 }
 
@@ -307,7 +318,6 @@ async function loadContent() {
         const checkpointsPath = path.join(topicDir, 'checkpoints.yml');
         const metadata = await readYaml(metadataPath);
         const content = await fs.readFile(contentPath, 'utf8');
-        const checkpointsDoc = await readYaml(checkpointsPath);
         const relativeTopic = toPosix(path.relative(ROOT, topicDir));
 
         assert(metadata.id && metadata.slug === topicSlug, `${relativeTopic}: topic id/slug mismatch`);
@@ -345,7 +355,7 @@ async function loadContent() {
         assert(!nearDuplicate, `${relativeTopic}: content is near-duplicate of ${nearDuplicate?.[1]}`);
         normalizedBodies.push([normalizedBody, relativeTopic]);
 
-        const parsedBlocks = parseMarkdown(content);
+        const { blocks: parsedBlocks, checkpoints: parsedCheckpoints } = parseMarkdown(content);
         validateBlocks(parsedBlocks, contentPath);
         for (const block of parsedBlocks) {
           const mediaUrl = block.type === 'image' || block.type === 'chart' ? block.src : block.type === 'attachment' ? block.url : undefined;
@@ -360,13 +370,13 @@ async function loadContent() {
           return block;
         });
 
-        const checkpoints = Array.isArray(checkpointsDoc.checkpoints) ? checkpointsDoc.checkpoints : [];
+        const checkpoints = parsedCheckpoints;
         checkpoints.forEach((checkpoint, index) => {
-          assert(checkpoint.id && checkpoint.question, `${relativeTopic}/checkpoints.yml: checkpoint ${index} is incomplete`);
-          assert(Array.isArray(checkpoint.options) && checkpoint.options.length >= 2, `${relativeTopic}/checkpoints.yml: checkpoint ${index} needs options`);
+          assert(checkpoint.id && checkpoint.question, `${relativeTopic}/content.md: checkpoint ${index} is incomplete`);
+          assert(Array.isArray(checkpoint.options) && checkpoint.options.length >= 2, `${relativeTopic}/content.md: checkpoint ${index} needs options`);
           assert(Number.isInteger(checkpoint.correctIndex) && checkpoint.correctIndex >= 0 && checkpoint.correctIndex < checkpoint.options.length,
-            `${relativeTopic}/checkpoints.yml: checkpoint ${index} has invalid correctIndex`);
-          assert(checkpoint.explanation, `${relativeTopic}/checkpoints.yml: checkpoint ${index} needs explanation`);
+            `${relativeTopic}/content.md: checkpoint ${index} has invalid correctIndex`);
+          assert(checkpoint.explanation, `${relativeTopic}/content.md: checkpoint ${index} needs explanation`);
         });
         assert(new Set(checkpoints.map((checkpoint) => checkpoint.id)).size === checkpoints.length,
           `${relativeTopic}/checkpoints.yml: checkpoint IDs must be unique`);

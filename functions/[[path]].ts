@@ -268,6 +268,7 @@ async function githubJson<T>(url: string, token: string, init: RequestInit = {})
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Pingala-App',
       ...(init.headers || {}),
     },
   });

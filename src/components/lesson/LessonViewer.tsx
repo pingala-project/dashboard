@@ -14,7 +14,7 @@ import {
   SparklesIcon,
 } from 'hugeicons-react';
 import confetti from 'canvas-confetti';
-import { renderRichText } from '../../utils/formatContent';
+import { renderRichText, MarkdownBlock } from '../../utils/formatContent';
 import { useSettings } from '../../context/SettingsContext';
 import { RichMediaBlock } from './RichMediaBlock';
 import { ReadingNotes } from './ReadingNotes';
@@ -143,7 +143,7 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
           <p className="lesson-lead-summary">{renderRichText(topic.summary)}</p>
         )}
 
-        <div className="lesson-divider" />
+
 
         {/* Objectives */}
         {topic.objectives && topic.objectives.length > 0 && (
@@ -163,9 +163,7 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
             switch (block.type) {
               case 'paragraph':
                 return (
-                  <p key={bIdx} className="lesson-paragraph">
-                    {renderRichText(block.text)}
-                  </p>
+                  <MarkdownBlock key={bIdx} content={block.text} />
                 );
 
               case 'heading2':

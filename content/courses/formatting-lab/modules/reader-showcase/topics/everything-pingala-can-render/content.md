@@ -2,7 +2,7 @@
 
 Pingala lessons are designed to feel calm, generous, and easy to scan. This is a normal paragraph with **strong emphasis**, *quiet emphasis*, `inline code`, a [source link](https://www.markdownguide.org/basic-syntax/), ==a warm highlight==, and ~~a crossed-out thought~~.
 
-You can also place an image directly inside a paragraph: ![A small blue Pingala diagram](/content-assets/assets/formatting-lab.svg). Images use descriptive alt text and never execute HTML.
+You can also place an image directly inside a paragraph: ![A small blue Pingala diagram](/content-assets/assets/pingala-graphic.jpg). Images use descriptive alt text and never execute HTML.
 
 :::note A note about notes
 Select any passage in this lesson. The reader toolbar lets you highlight, circle, cross out, or turn that passage into a handwritten note. Guests can preview the mark; logging in saves it across devices.
@@ -53,26 +53,26 @@ Turn on line numbers, switch code themes, and copy the example from the code blo
 ## Images, charts, previews, and attachments
 
 :::image A repository-hosted image
-src: ./assets/formatting-lab.svg
+src: ./assets/pingala-graphic.jpg
 alt: A blue diagram showing the Pingala content pipeline
 caption: Assets can live beside the Markdown in the public subject repository and are copied into the static bundle.
 width: 92%
 :::
 
 :::chart A lightweight chart preview
-src: ./assets/formatting-lab.svg
+src: ./assets/pingala-graphic.jpg
 alt: A simple chart-style illustration of reviewed content becoming a lesson
 caption: Charts use the same safe image pipeline; interactive charts can use an approved embed host.
 :::
 
 :::embed A video preview
-url: https://www.youtube.com/embed/dQw4w9WgXcQ
+url: https://www.youtube.com/embed/spUNpyF58BY
 height: 360
 caption: Embeds are restricted to an allowlist and rendered in a sandboxed frame.
 :::
 
 :::attachment Download the content example
-url: ./assets/formatting-lab.svg
+url: ./assets/pingala-graphic.jpg
 label: Open the example asset
 description: A small SVG attachment demonstrating the preview/download card.
 :::
@@ -88,3 +88,21 @@ Clarity is a feature. A contributor's explanation should remain understandable e
 Try selecting the phrase **Clarity is a feature** above. Make a yellow highlight, then create a handwritten note explaining why it matters. Your annotation card uses the Kalam typeface, while the Reading Mode settings let authenticated readers choose a body font, text size, and reading width.
 
 When you contribute a lesson, include learning objectives, authoritative sources, license and provenance details, AI-assistance disclosure, and an attestation that you reviewed and can explain the material. The contribution guide includes copy-paste examples for every block used here.
+
+:::checkpoint Which content is accepted into the published curriculum?
+options:
+  - A reviewed document with citations, safe syntax, and a human explanation.
+  - Any text pasted into a pull request without review.
+  - A script tag that runs inside the lesson.
+correctIndex: 0
+explanation: Published lessons are pinned to reviewed commits and pass automated safety checks plus human review.
+:::
+
+:::checkpoint What happens when a guest learner saves a reading annotation?
+options:
+  - It is silently stored under a personal name.
+  - Pingala asks them to log in before saving it to an account.
+  - It is published to the curriculum repository.
+correctIndex: 1
+explanation: Guests can preview annotations, but saved notes and highlights belong to an authenticated GitHub account.
+:::

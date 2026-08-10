@@ -1,154 +1,78 @@
 import React from 'react';
-import katex from 'katex';
-
-const renderKatex = (mathStr: string, displayMode: boolean): string => {
-  try {
-    return katex.renderToString(mathStr.trim(), {
-    displayMode,
-    throwOnError: false,
-    strict: false,
-    trust: false,
-    });
-  } catch {
-    return mathStr;
-  }
-};
-
-const isSafeHref = (href: string): boolean => /^(https?:\/\/|\/|#)/i.test(href.trim());
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import 'katex/dist/katex.min.css';
 
 /**
- * Renders rich text with support for:
- * - Inline LaTeX: $...$
- * - Bold: **text**
- * - Italic: *text*
- * - Inline code: `code`
- * - Highlights: ==important==
- * - Strikethrough: ~~removed~~
- * - Images: ![alt](https://...)
- * - Links: [title](url)
+ * Preprocess markdown to support legacy Pingala syntax in standard markdown.
+ * 1. Convert ==highlight== to <mark> tags.
+ * 2. Rewrite ./assets/ to /content-assets/ for inline images.
+ */
+const preprocessMarkdown = (text: string) => {
+  return text
+    .replace(/==([^=\n]+)==/g, '<mark>$1</mark>')
+    // Handle both ./assets/ and /content-assets/assets/ paths in raw markdown
+    .replace(/!\[([^\]]*)\]\((?:\.\/assets\/|\/content-assets\/assets\/)([^)]+)\)/g, '![$1](/content-assets/$2)');
+};
+
+/**
+ * Inline Markdown Renderer (strips wrapping <p> tags).
+ * Use this for titles, captions, and short text where a block element would break the layout.
+ */
+export const MarkdownInline: React.FC<{ content?: string }> = ({ content }) => {
+  if (!content) return null;
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex, rehypeRaw]}
+      components={{
+        p: React.Fragment,
+        a: ({ node, ...props }) => <a className="lesson-inline-link" target="_blank" rel="noopener noreferrer" {...props} />,
+        code: ({ node, ...props }) => <code className="inline-code-pill" {...props} />,
+        mark: ({ node, ...props }) => <mark className="lesson-highlight" {...props} />,
+        del: ({ node, ...props }) => <del className="lesson-strike" {...props} />,
+      }}
+    >
+      {preprocessMarkdown(content)}
+    </ReactMarkdown>
+  );
+};
+
+/**
+ * Legacy compatibility wrapper for renderRichText.
+ * Maps all existing renderRichText(text) calls to the new MarkdownInline component.
  */
 export function renderRichText(content?: string): React.ReactNode {
-  if (!content) return null;
-
-  // We tokenize manually to avoid lookbehind regex issues in Safari/older engines.
-  // Supported delimiters (in priority order):
-  // 1. $...$  — inline math
-  // 2. **..** — bold
-  // 3. *...*  — italic  (we handle ** first so we don't mis-match)
-  // 4. `...`  — inline code
-  // 5. [text](url) — link
-
-  const DELIMITERS = [
-    { re: /\$([^$\n]+)\$/, type: 'math' },
-    { re: /!\[([^\]]*)\]\(([^)]+)\)/, type: 'image' },
-    { re: /\*\*([^*]+)\*\*/, type: 'bold' },
-    { re: /==([^=\n]+)==/, type: 'highlight' },
-    { re: /~~([^~\n]+)~~/, type: 'strike' },
-    { re: /\*([^*]+)\*/, type: 'italic' },
-    { re: /`([^`]+)`/, type: 'code' },
-    { re: /\[([^\]]+)\]\(([^)]+)\)/, type: 'link' },
-  ];
-
-  const nodes: React.ReactNode[] = [];
-  let remaining = content;
-  let globalIdx = 0;
-
-  while (remaining.length > 0) {
-    // Find the earliest matching delimiter
-    let earliestIndex = remaining.length;
-    let earliestType: string | null = null;
-    let earliestMatch: RegExpMatchArray | null = null;
-
-    for (const { re, type } of DELIMITERS) {
-      const match = remaining.match(re);
-      if (match && match.index !== undefined && match.index < earliestIndex) {
-        earliestIndex = match.index;
-        earliestType = type;
-        earliestMatch = match;
-      }
-    }
-
-    if (!earliestMatch || earliestType === null) {
-      // No more matches — push remaining text
-      nodes.push(remaining);
-      break;
-    }
-
-    // Push plain text before match
-    if (earliestIndex > 0) {
-      nodes.push(remaining.slice(0, earliestIndex));
-    }
-
-    const fullMatch = earliestMatch[0];
-
-    switch (earliestType) {
-      case 'math': {
-        const html = renderKatex(earliestMatch[1], false);
-        nodes.push(
-          <span
-            key={globalIdx++}
-            className="inline-latex-math"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        );
-        break;
-      }
-      case 'bold':
-        nodes.push(<strong key={globalIdx++}>{earliestMatch[1]}</strong>);
-        break;
-      case 'italic':
-        nodes.push(<em key={globalIdx++}>{earliestMatch[1]}</em>);
-        break;
-      case 'code':
-        nodes.push(
-          <code key={globalIdx++} className="inline-code-pill">
-            {earliestMatch[1]}
-          </code>
-        );
-        break;
-      case 'highlight':
-        nodes.push(<mark key={globalIdx++} className="lesson-highlight">{earliestMatch[1]}</mark>);
-        break;
-      case 'strike':
-        nodes.push(<del key={globalIdx++} className="lesson-strike">{earliestMatch[1]}</del>);
-        break;
-      case 'image':
-        if (isSafeHref(earliestMatch[2])) {
-          nodes.push(
-            <img
-              key={globalIdx++}
-              src={earliestMatch[2]}
-              alt={earliestMatch[1] || 'Lesson illustration'}
-              className="lesson-inline-image"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          );
-        } else {
-          nodes.push(earliestMatch[1]);
-        }
-        break;
-      case 'link':
-        if (isSafeHref(earliestMatch[2])) {
-          nodes.push(
-            <a
-              key={globalIdx++}
-              href={earliestMatch[2]}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="lesson-inline-link"
-            >
-              {earliestMatch[1]}
-            </a>
-          );
-        } else {
-          nodes.push(earliestMatch[1]);
-        }
-        break;
-    }
-
-    remaining = remaining.slice(earliestIndex + fullMatch.length);
-  }
-
-  return nodes;
+  return <MarkdownInline content={content} />;
 }
+
+/**
+ * Block Markdown Renderer.
+ * Use this for full paragraphs, lists, and main body text.
+ */
+export const MarkdownBlock: React.FC<{ content?: string }> = ({ content }) => {
+  if (!content) return null;
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex, rehypeRaw]}
+      components={{
+        p: ({ node, ...props }) => <p className="lesson-paragraph" {...props} />,
+        ul: ({ node, ...props }) => <ul className="lesson-list" {...props} />,
+        ol: ({ node, ...props }) => <ol className="lesson-list" {...props} />,
+        a: ({ node, ...props }) => <a className="lesson-inline-link" target="_blank" rel="noopener noreferrer" {...props} />,
+        code: ({ node, ...props }) => <code className="inline-code-pill" {...props} />,
+        blockquote: ({ node, ...props }) => <blockquote className="rich-quote-block" {...props} />,
+        mark: ({ node, ...props }) => <mark className="lesson-highlight" {...props} />,
+        del: ({ node, ...props }) => <del className="lesson-strike" {...props} />,
+        table: ({ node, ...props }) => <div className="table-wrapper"><table className="lesson-table" {...props} /></div>,
+        img: ({ node, ...props }) => <img className="lesson-inline-image" loading="lazy" referrerPolicy="no-referrer" {...props} />,
+      }}
+    >
+      {preprocessMarkdown(content)}
+    </ReactMarkdown>
+  );
+};

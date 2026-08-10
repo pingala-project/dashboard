@@ -58,9 +58,9 @@ export const RichMediaBlock: React.FC<{ block: ContentBlock }> = ({ block }) => 
             src={source.toString()}
             title={block.title || block.label || 'Embedded lesson resource'}
             loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
             referrerPolicy="no-referrer"
-            style={{ height: `${Math.min(Math.max(block.height || 420, 220), 900)}px` }}
+            style={{ aspectRatio: '16 / 9', height: 'auto', width: '100%', border: 'none', borderRadius: '12px' }}
           />
         ) : (
           <a className="rich-attachment-card" href={source.toString()} target="_blank" rel="noopener noreferrer">

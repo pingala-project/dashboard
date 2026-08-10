@@ -317,9 +317,6 @@ const AppContent: React.FC = () => {
               onSelectTopic={(topicId) => 
                 navigateTo({ type: 'topic', courseId: currentCourse!.id, topicId })
               }
-              onSelectCourseHome={() => 
-                navigateTo({ type: 'course', courseId: currentCourse!.id })
-              }
             />
 
             <div className="course-workspace-main">
