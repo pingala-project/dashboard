@@ -5,10 +5,10 @@
       "slug": "ai-ml",
       "repository": "pingala-project/ai-ml",
       "ref": "main",
-      "commit": "53275e40fa1d2b02cca515cbbc96ab8c6db7a982",
+      "commit": "56340d171bcfa26ee310f7917543bf399a268fbf",
       "path": "content",
-      "checksum": "7fec74259550c93efd280156f9371366fe53d341ba75af13d60779e893f950f9",
-      "note": "Content is pinned to an immutable reviewed commit and verified with a deterministic SHA-256 checksum."
+      "checksum": "8790998f57e5d339aad45c8b2f9be6fe838737b90afb3e9cbe5ab37b4c4dfc5b",
+      "note": "Content is pinned to the merged Formatting Lab commit and verified with a deterministic SHA-256 checksum."
     }
   ]
 }

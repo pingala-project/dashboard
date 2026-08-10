@@ -87,13 +87,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [editingBio, setEditingBio] = useState(false);
   const [editingGoal, setEditingGoal] = useState(false);
 
-  const [tempName, setTempName] = useState(settings.profile.name || 'Rishabh');
+  const [tempName, setTempName] = useState(settings.profile.name || user?.name || '');
   const [tempBio, setTempBio] = useState(settings.profile.bio || '');
-  const [tempGoal, setTempGoal] = useState(settings.profile.learningGoal || 'Master Deep Learning & Transformers');
+  const [tempGoal, setTempGoal] = useState(settings.profile.learningGoal || '');
 
-  const displayName = user?.name || settings.profile.name || 'Guest learner';
-  const displayEmail = user?.email || settings.profile.email || 'Sign in to fetch your GitHub email';
-  const avatarUrl = user?.avatarUrl || settings.profile.avatarUrl || (user?.login ? `https://github.com/${user.login}.png?size=160` : '');
+  const displayName = user?.name || 'Guest learner';
+  const displayEmail = user?.email || 'GitHub email is unavailable for this account.';
+  const avatarUrl = user?.avatarUrl || '';
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -107,6 +107,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     setShowLogoutConfirm(false);
     void logout().then(() => showToast('Logged out', 'Your Pingala session has been closed.', 'success'));
   };
+
+  if (!user) {
+    return (
+      <div className="settings-auth-gate">
+        <div className="settings-auth-gate-icon"><GithubIcon size={28} /></div>
+        <h1>Log in to open settings</h1>
+        <p>Pingala keeps your profile, reading preferences, progress, bookmarks, and notes attached to your GitHub account.</p>
+        <button className="profile-setup-btn settings-auth-gate-button" onClick={login}>Log in with GitHub</button>
+        <span className="settings-auth-gate-note">You can keep browsing lessons without an account.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-fullpage">
@@ -135,14 +147,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             {/* Top Profile Header (Stacked Avatar, Name, Email) */}
             <div className="mobbin-account-header">
               <div className="mobbin-avatar-wrapper">
-                <img
-                  src={avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${settings.profile.github || 'pingala'}`}
-                  alt={displayName}
-                  className="mobbin-hero-avatar"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${settings.profile.github || 'pingala'}`;
-                  }}
-                />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={displayName} className="mobbin-hero-avatar" />
+                ) : <UserIcon size={38} className="mobbin-fallback-avatar" />}
               </div>
 
               <h1 className="mobbin-hero-name">{displayName}</h1>
@@ -282,7 +289,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="mobbin-row-label">Learning goal</div>
                     {!editingGoal ? (
                       <div className="mobbin-row-val">
-                        {settings.profile.learningGoal || 'Master Deep Learning & Transformers'}
+                        {settings.profile.learningGoal || 'Choose a learning goal'}
                       </div>
                     ) : (
                       <input
@@ -318,7 +325,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       <button
                         className="mobbin-edit-btn"
                         onClick={() => {
-                          setTempGoal(settings.profile.learningGoal || 'Master Deep Learning & Transformers');
+                          setTempGoal(settings.profile.learningGoal || '');
                           setEditingGoal(true);
                         }}
                       >
@@ -605,7 +612,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <input
                       type="checkbox"
                       checked={settings.learning.instantQuizFeedback}
-                      onChange={(e) => updateLearning({ instantQuizFeedback: e.target.checked })}
+                      onChange={(e) => {
+                        updateLearning({ instantQuizFeedback: e.target.checked });
+                        showToast('Quiz preference updated', e.target.checked ? 'Instant feedback is enabled.' : 'Instant feedback is disabled.', 'success');
+                      }}
                     />
                     <span className="mobbin-toggle-track">
                       <span className="mobbin-toggle-knob" />
@@ -623,7 +633,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <input
                       type="checkbox"
                       checked={settings.learning.confettiEnabled}
-                      onChange={(e) => updateLearning({ confettiEnabled: e.target.checked })}
+                      onChange={(e) => {
+                        updateLearning({ confettiEnabled: e.target.checked });
+                        showToast('Completion preference updated', e.target.checked ? 'Completion confetti is enabled.' : 'Completion confetti is disabled.', 'success');
+                      }}
                     />
                     <span className="mobbin-toggle-track">
                       <span className="mobbin-toggle-knob" />
@@ -641,7 +654,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <input
                       type="checkbox"
                       checked={settings.learning.autoAdvanceOnComplete}
-                      onChange={(e) => updateLearning({ autoAdvanceOnComplete: e.target.checked })}
+                      onChange={(e) => {
+                        updateLearning({ autoAdvanceOnComplete: e.target.checked });
+                        showToast('Navigation preference updated', e.target.checked ? 'Lessons will advance automatically.' : 'Manual navigation is enabled.', 'success');
+                      }}
                     />
                     <span className="mobbin-toggle-track">
                       <span className="mobbin-toggle-knob" />

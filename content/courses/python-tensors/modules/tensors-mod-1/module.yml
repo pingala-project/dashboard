@@ -1,5 +1,0 @@
-id: tensors-mod-1
-slug: tensors-mod-1
-order: 0
-title: "Module 01: Vectorization & Stride Mechanics"
-description: Memory layout of C-contiguous arrays, strides, and memory zero-copy views.

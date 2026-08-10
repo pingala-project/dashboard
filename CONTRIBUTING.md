@@ -33,6 +33,8 @@ content.md         # the lesson readers see
 checkpoints.yml    # typed self-assessment questions
 ```
 
+Images and downloadable files can live in the subject repository's `content/assets/` directory. Use `./assets/file.svg` in a directive; the dashboard copies it into the immutable static bundle during the build.
+
 The renderer intentionally supports a small, safe Markdown vocabulary. Use headings,
 paragraphs, lists, fenced code, KaTeX, links, and these inline marks:
 
@@ -41,7 +43,7 @@ paragraphs, lists, fenced code, KaTeX, links, and these inline marks:
 
 This is **important**, this is *emphasis*, and this is ==a reader highlight==.
 You can also ~~cross out an outdated phrase~~ or add an image:
-![A labelled diagram](https://example.com/diagram.png)
+![A labelled diagram](/content-assets/assets/diagram.png)
 ```
 
 Inline links and images must use `https://`, a relative `/asset` URL, or a hash link.
@@ -54,14 +56,14 @@ the type tells the reader what it is:
 
 ```md
 :::image
-src: https://example.com/attention-map.png
+src: ./assets/attention-map.png
 alt: Heatmap showing attention between tokens
 caption: A small attention map for the worked example.
 width: 92%
 :::
 
 :::chart
-src: https://example.com/model-accuracy.svg
+src: ./assets/model-accuracy.svg
 alt: Accuracy by training epoch
 caption: The validation curve levels off after epoch 18.
 :::
@@ -71,7 +73,7 @@ Use attachments for notebooks, papers, or downloadable resources:
 
 ```md
 :::attachment
-url: https://example.com/lesson-notebook.ipynb
+url: ./assets/lesson-notebook.ipynb
 label: Download the worked notebook
 description: Jupyter notebook for the tensor broadcasting exercise.
 :::
@@ -94,6 +96,19 @@ attachments become accessible resource cards, and allowed embeds render in a san
 frame. An unapproved embed host becomes a normal safe link instead of executable content.
 Keep alt text useful to someone who cannot see the image; never use an image as the only
 place where a mathematical or factual explanation appears.
+
+### Reading notes and highlights
+
+Readers can select text and choose **Highlight**, **Circle**, **Cross out**, or **Note**.
+The first three marks are applied back to the selected passage and the note appears as a
+handwritten Kalam card. Guests can preview an annotation, but saving, editing, and deleting
+notes requires GitHub login. Saved notes are private account data and are never committed to
+the curriculum repository.
+
+The showcase lesson in `Formatting Lab / Everything Pingala Can Render` is the visual
+reference for how every block above appears on the page. Open it locally after `npm run
+build` to verify typography, callouts, media cards, code controls, math, checkpoints, and
+reading notes together.
 
 ### Math, code, callouts, and checkpoints
 

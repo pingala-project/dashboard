@@ -3,7 +3,6 @@ import {
   Search01Icon, 
   UserIcon, 
 } from 'hugeicons-react';
-import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileDropdown } from '../profile/ProfileDropdown';
 
@@ -28,12 +27,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenSettings,
   bookmarkedCount,
 }) => {
-  const { settings } = useSettings();
   const { user } = useAuth();
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
-  const avatarUrl = user?.avatarUrl || settings.profile.avatarUrl || (settings.profile.github ? `https://github.com/${settings.profile.github}.png?size=64` : '');
-  const profileName = user?.name || settings.profile.name || 'Guest learner';
-  const profileHandle = user?.login || settings.profile.github || 'guest';
+  const avatarUrl = user?.avatarUrl || '';
+  const profileName = user?.name || 'Guest learner';
+  const profileHandle = user?.login || 'guest';
 
   return (
     <header className="topbar mobbin-topbar">
@@ -106,7 +104,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   alt={profileName}
                   className="mobbin-user-avatar"
                   onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${profileHandle}`;
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
                   }}
                 />
               ) : (

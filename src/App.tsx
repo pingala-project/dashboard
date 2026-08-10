@@ -16,8 +16,18 @@ import { ToastProvider, useToast } from './context/ToastContext';
 const COMPLETED_STORAGE_KEY = 'pingala_completed_topics';
 const BOOKMARKS_STORAGE_KEY = 'pingala_bookmarked_topics';
 
+function readLegacyIds(key: string) {
+  try {
+    const saved = localStorage.getItem(key);
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? new Set(parsed.filter((id): id is string => typeof id === 'string')) : new Set<string>();
+  } catch {
+    return new Set<string>();
+  }
+}
+
 const AppContent: React.FC = () => {
-  const { user, refreshProgress, syncProgress } = useAuth();
+  const { user, isLoading: isAuthLoading, login, refreshProgress, syncProgress, refreshNotes, createNote } = useAuth();
   const { showToast } = useToast();
   const [history, setHistory] = useState<ActiveView[]>([{ type: 'all_courses' }]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
@@ -25,71 +35,56 @@ const AppContent: React.FC = () => {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState<boolean>(false);
 
   // Completed topics
-  const [completedTopicIds, setCompletedTopicIds] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem(COMPLETED_STORAGE_KEY);
-      if (saved) return new Set(JSON.parse(saved));
-    } catch (e) {
-      console.error('Failed to load completed topics', e);
-    }
-    return new Set(['topic-vector-spaces']);
-  });
+  const [completedTopicIds, setCompletedTopicIds] = useState<Set<string>>(new Set());
 
   // Bookmarked topics
-  const [bookmarkedTopicIds, setBookmarkedTopicIds] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem(BOOKMARKS_STORAGE_KEY);
-      if (saved) return new Set(JSON.parse(saved));
-    } catch (e) {
-      console.error('Failed to load bookmarks', e);
-    }
-    return new Set(['topic-self-attention']);
-  });
+  const [bookmarkedTopicIds, setBookmarkedTopicIds] = useState<Set<string>>(new Set());
   const [remoteProgressHydrated, setRemoteProgressHydrated] = useState(false);
+  const [legacyProgressPending, setLegacyProgressPending] = useState(false);
 
   useEffect(() => {
     let active = true;
+    if (isAuthLoading) return () => { active = false; };
     if (!user) {
       setRemoteProgressHydrated(false);
+      setLegacyProgressPending(false);
+      setCompletedTopicIds(new Set());
+      setBookmarkedTopicIds(new Set());
       return () => { active = false; };
     }
 
     void (async () => {
       const remote = await refreshProgress();
       if (!active) return;
+      const legacyCompleted = readLegacyIds(COMPLETED_STORAGE_KEY);
+      const legacyBookmarked = readLegacyIds(BOOKMARKS_STORAGE_KEY);
       if (remote) {
-        setCompletedTopicIds((current) => new Set([...current, ...remote.completedTopicIds]));
-        setBookmarkedTopicIds((current) => new Set([...current, ...remote.bookmarkedTopicIds]));
+        setCompletedTopicIds(new Set([...legacyCompleted, ...remote.completedTopicIds]));
+        setBookmarkedTopicIds(new Set([...legacyBookmarked, ...remote.bookmarkedTopicIds]));
+      } else {
+        setCompletedTopicIds(legacyCompleted);
+        setBookmarkedTopicIds(legacyBookmarked);
       }
+      setLegacyProgressPending(legacyCompleted.size > 0 || legacyBookmarked.size > 0);
       setRemoteProgressHydrated(true);
     })();
 
     return () => { active = false; };
-  }, [refreshProgress, user]);
+  }, [isAuthLoading, refreshProgress, user]);
 
   useEffect(() => {
     if (!user || !remoteProgressHydrated) return;
     void syncProgress({
       completedTopicIds: Array.from(completedTopicIds),
       bookmarkedTopicIds: Array.from(bookmarkedTopicIds),
+    }).then((synced) => {
+      if (synced && legacyProgressPending) {
+        localStorage.removeItem(COMPLETED_STORAGE_KEY);
+        localStorage.removeItem(BOOKMARKS_STORAGE_KEY);
+        setLegacyProgressPending(false);
+      }
     });
-  }, [bookmarkedTopicIds, completedTopicIds, remoteProgressHydrated, syncProgress, user]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(COMPLETED_STORAGE_KEY, JSON.stringify(Array.from(completedTopicIds)));
-    } catch (e) {
-      console.error('Failed to save completed topics', e);
-    }
-  }, [completedTopicIds]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(Array.from(bookmarkedTopicIds)));
-    } catch (e) {
-      console.error('Failed to save bookmarks', e);
-    }
-  }, [bookmarkedTopicIds]);
+  }, [bookmarkedTopicIds, completedTopicIds, legacyProgressPending, remoteProgressHydrated, syncProgress, user]);
 
   // Global Cmd+K keyboard shortcut
   useEffect(() => {
@@ -114,6 +109,11 @@ const AppContent: React.FC = () => {
   };
 
   const handleToggleComplete = (topicId: string) => {
+    if (!user) {
+      showToast('Log in to track progress', 'Your completed lessons are saved to your GitHub account.', 'info');
+      login();
+      return;
+    }
     setCompletedTopicIds((prev) => {
       const next = new Set(prev);
       if (next.has(topicId)) {
@@ -126,6 +126,11 @@ const AppContent: React.FC = () => {
   };
 
   const handleToggleBookmark = (topicId: string) => {
+    if (!user) {
+      showToast('Log in to save lessons', 'Bookmarks follow your account across devices.', 'info');
+      login();
+      return;
+    }
     setBookmarkedTopicIds((prev) => {
       const next = new Set(prev);
       if (next.has(topicId)) {
@@ -139,17 +144,28 @@ const AppContent: React.FC = () => {
 
   // Data export/import & reset handlers
   const handleResetProgress = () => {
+    if (!user) {
+      showToast('Log in to manage your data', 'Progress and bookmarks belong to your account.', 'info');
+      login();
+      return;
+    }
     setCompletedTopicIds(new Set());
     setBookmarkedTopicIds(new Set());
     showToast('Progress reset', 'Completed lessons and bookmarks were cleared.', 'success');
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
+    if (!user) {
+      showToast('Log in to export data', 'Your saved learning data is available after login.', 'info');
+      login();
+      return;
+    }
     const exportObject = {
       version: '1.0',
       timestamp: new Date().toISOString(),
       completedTopicIds: Array.from(completedTopicIds),
       bookmarkedTopicIds: Array.from(bookmarkedTopicIds),
+      notes: await refreshNotes(''),
     };
     const blob = new Blob([JSON.stringify(exportObject, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -162,6 +178,11 @@ const AppContent: React.FC = () => {
   };
 
   const handleImportData = (file: File) => {
+    if (!user) {
+      showToast('Log in to import data', 'Your saved learning data is available after login.', 'info');
+      login();
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -172,7 +193,16 @@ const AppContent: React.FC = () => {
         if (parsed.bookmarkedTopicIds && Array.isArray(parsed.bookmarkedTopicIds)) {
           setBookmarkedTopicIds(new Set(parsed.bookmarkedTopicIds));
         }
-        showToast('Backup imported', 'Your curriculum progress and bookmarks were restored.', 'success');
+        if (Array.isArray(parsed.notes)) {
+          void Promise.all(parsed.notes.slice(0, 200).map((note: unknown) => {
+            if (!note || typeof note !== 'object') return null;
+            const candidate = note as Record<string, unknown>;
+            if (typeof candidate.topicId !== 'string' || typeof candidate.sourceText !== 'string') return null;
+            const style = ['plain', 'highlight', 'circle', 'strike'].includes(String(candidate.style)) ? candidate.style as 'plain' | 'highlight' | 'circle' | 'strike' : 'plain';
+            return createNote({ topicId: candidate.topicId, sourceText: candidate.sourceText, noteText: typeof candidate.noteText === 'string' ? candidate.noteText : '', style });
+          }));
+        }
+        showToast('Backup imported', 'Your curriculum progress, bookmarks, and notes were restored.', 'success');
       } catch {
         showToast('Import failed', 'Choose a valid Pingala JSON backup file.', 'error');
       }
@@ -352,12 +382,21 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleNavigateTab = (tab: 'all_courses' | 'bookmarks') => {
+    if (tab === 'bookmarks' && !user) {
+      showToast('Log in to view saved lessons', 'Bookmarks follow your account across devices.', 'info');
+      login();
+      return;
+    }
+    navigateTo({ type: tab });
+  };
+
   return (
     <div className="mobbin-app-layout">
       {/* Mobbin Top Bar */}
       <TopBar
         activeViewType={activeView.type}
-        onNavigateTab={(tab) => navigateTo({ type: tab })}
+        onNavigateTab={handleNavigateTab}
         onOpenSearch={() => setIsSearchOpen(true)}
         onToggleProfileDropdown={() => setIsProfileDropdownOpen((prev) => !prev)}
         isProfileDropdownOpen={isProfileDropdownOpen}

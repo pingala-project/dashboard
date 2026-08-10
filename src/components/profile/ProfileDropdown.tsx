@@ -10,7 +10,8 @@ import {
 } from 'hugeicons-react';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
-import { contentProposalUrl, contributionGuideUrl, feedbackUrl, projectReadmeUrl, releasesUrl } from '../../config/project';
+import { contentProposalUrl, contributionGuideUrl, feedbackUrl, organizationUrl, projectReadmeUrl, releasesUrl } from '../../config/project';
+import { useToast } from '../../context/ToastContext';
 
 interface ProfileDropdownProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
 }) => {
   const { settings, updateAppearance } = useSettings();
   const { user, login, logout } = useAuth();
+  const { showToast } = useToast();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Click outside to close (ignoring clicks on the trigger avatar button)
@@ -56,9 +58,8 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
   };
 
   const currentTheme = settings.appearance.theme;
-  const githubUser = user?.login || settings.profile.github || 'rishabh';
-  const displayName = user?.name || settings.profile.name || 'Guest learner';
-  const displayEmail = user?.email || settings.profile.email || 'Sign in to show your GitHub email';
+  const displayName = user?.name || 'Guest learner';
+  const displayEmail = user?.email || 'Log in with GitHub to save your history, notes, and settings.';
 
   return (
     <div className="profile-dropdown-popover" ref={dropdownRef}>
@@ -71,7 +72,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
           className="profile-setup-btn"
           onClick={() => handleAction(user ? onOpenSettings : login)}
         >
-          {user ? 'Set up profile' : 'Sign in with GitHub'}
+          {user ? 'Set up profile' : 'Log in with GitHub'}
         </button>
       </div>
 
@@ -112,21 +113,21 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
         <div className="profile-theme-pill">
           <button 
             className={`theme-pill-btn ${currentTheme === 'light' ? 'active' : ''}`}
-            onClick={() => updateAppearance({ theme: 'light' })}
+            onClick={() => { updateAppearance({ theme: 'light' }); showToast('Theme preview updated', 'Log in to save this preference to your account.', 'info'); }}
             title="Light Theme"
           >
             <Sun01Icon size={14} />
           </button>
           <button 
             className={`theme-pill-btn ${currentTheme === 'dark' ? 'active' : ''}`}
-            onClick={() => updateAppearance({ theme: 'dark' })}
+            onClick={() => { updateAppearance({ theme: 'dark' }); showToast('Theme preview updated', 'Log in to save this preference to your account.', 'info'); }}
             title="Dark Theme (#141414)"
           >
             <Moon01Icon size={14} />
           </button>
           <button 
             className={`theme-pill-btn ${currentTheme === 'system' ? 'active' : ''}`}
-            onClick={() => updateAppearance({ theme: 'system' })}
+            onClick={() => { updateAppearance({ theme: 'system' }); showToast('Theme preview updated', 'Log in to save this preference to your account.', 'info'); }}
             title="System Theme"
           >
             <ComputerIcon size={14} />
@@ -140,7 +141,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
       <div className="profile-dropdown-section links-section">
         {/* GitHub Option */}
         <a 
-          href={`https://github.com/${githubUser}`} 
+          href={organizationUrl}
           target="_blank" 
           rel="noreferrer" 
           className="profile-dropdown-item text-only with-arrow"

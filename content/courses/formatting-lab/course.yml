@@ -1,0 +1,30 @@
+id: formatting-lab
+slug: formatting-lab
+order: 0
+title: Formatting Lab
+tagline: A guided tour of every way Pingala can explain an idea.
+description: Explore the complete lesson canvas before contributing your own course content.
+trackId: foundations
+level: Foundations
+theme:
+  border: "#bfdbfe"
+  bg: "#eff6ff"
+  headerBg: "#dbeafe"
+  badgeBg: "#2563eb"
+  badgeText: "#ffffff"
+  accent: "#2563eb"
+  tagBg: "#dbeafe"
+icon: ✦
+estimatedHours: 20 min
+prerequisites: []
+tags:
+  - Writing
+  - Markdown
+  - Notes
+cardStyle: blue-folder
+cardSnippet:
+  notesParagraph: One small lesson showing the full Pingala reading and contribution experience.
+contributor:
+  name: Pingala Project
+  github: pingala-project
+  role: Curriculum maintainers

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { AppSettings, AppSettingsPatch } from '../types/settings';
+import type { ReadingNote, ReadingNoteInput } from '../types/notes';
 
 export interface AuthUser {
   id: string;
@@ -24,9 +25,13 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   updateProfile: (profile: Partial<Pick<AuthUser, 'name' | 'bio' | 'learningGoal'>>) => Promise<AuthUser | null>;
   refreshProgress: () => Promise<RemoteProgress | null>;
-  syncProgress: (progress: RemoteProgress) => Promise<void>;
+  syncProgress: (progress: RemoteProgress) => Promise<boolean>;
   refreshSettings: () => Promise<AppSettingsPatch | null>;
-  syncSettings: (settings: AppSettings) => Promise<void>;
+  syncSettings: (settings: AppSettings) => Promise<boolean>;
+  refreshNotes: (topicId: string) => Promise<ReadingNote[]>;
+  createNote: (note: ReadingNoteInput) => Promise<ReadingNote | null>;
+  updateNote: (id: string, note: Partial<Pick<ReadingNoteInput, 'noteText' | 'style' | 'color'>>) => Promise<ReadingNote | null>;
+  deleteNote: (id: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -110,16 +115,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const syncProgress = useCallback(async (progress: RemoteProgress) => {
-    if (!user) return;
+    if (!user) return false;
     try {
-      await fetch('/api/progress/sync', {
+      const response = await fetch('/api/progress/sync', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
         body: JSON.stringify(progress),
       });
+      return response.ok;
     } catch {
       // Local state remains the source of truth until the next successful sync.
+      return false;
     }
   }, [user]);
 
@@ -135,16 +142,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const syncSettings = useCallback(async (settings: AppSettings) => {
-    if (!user) return;
+    if (!user) return false;
     try {
-      await fetch('/api/me/settings', {
+      const response = await fetch('/api/me/settings', {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
         body: JSON.stringify({ settings }),
       });
+      return response.ok;
     } catch {
       // Local settings remain available until the next successful sync.
+      return false;
+    }
+  }, [user]);
+
+  const refreshNotes = useCallback(async (topicId: string) => {
+    if (!user) return [];
+    try {
+      const response = await fetch(`/api/notes?topicId=${encodeURIComponent(topicId)}`, { credentials: 'include' });
+      const payload = await readJson<{ notes: ReadingNote[] }>(response);
+      return response.ok && Array.isArray(payload?.notes) ? payload.notes : [];
+    } catch {
+      return [];
+    }
+  }, [user]);
+
+  const createNote = useCallback(async (note: ReadingNoteInput) => {
+    if (!user) return null;
+    try {
+      const response = await fetch('/api/notes', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+        body: JSON.stringify(note),
+      });
+      const payload = await readJson<{ note: ReadingNote }>(response);
+      return response.ok ? payload?.note || null : null;
+    } catch {
+      return null;
+    }
+  }, [user]);
+
+  const updateNote = useCallback(async (id: string, note: Partial<Pick<ReadingNoteInput, 'noteText' | 'style' | 'color'>>) => {
+    if (!user) return null;
+    try {
+      const response = await fetch(`/api/notes/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+        body: JSON.stringify(note),
+      });
+      const payload = await readJson<{ note: ReadingNote }>(response);
+      return response.ok ? payload?.note || null : null;
+    } catch {
+      return null;
+    }
+  }, [user]);
+
+  const deleteNote = useCallback(async (id: string) => {
+    if (!user) return false;
+    try {
+      const response = await fetch(`/api/notes/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: csrfHeaders(),
+      });
+      return response.ok;
+    } catch {
+      return false;
     }
   }, [user]);
 
@@ -158,7 +224,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncProgress,
     refreshSettings,
     syncSettings,
-  }), [isLoading, login, logout, refreshProgress, refreshSettings, syncProgress, syncSettings, updateProfile, user]);
+    refreshNotes,
+    createNote,
+    updateNote,
+    deleteNote,
+  }), [createNote, deleteNote, isLoading, login, logout, refreshNotes, refreshProgress, refreshSettings, syncProgress, syncSettings, updateNote, updateProfile, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

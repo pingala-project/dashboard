@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Course } from '../../types/curriculum';
 import { Search01Icon } from 'hugeicons-react';
+import { CurriculumList } from '../courses/CurriculumList';
 
 interface NestedCourseSidebarProps {
   course: Course;
@@ -17,12 +18,6 @@ export const NestedCourseSidebar: React.FC<NestedCourseSidebarProps> = ({
   onSelectCourseHome,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [collapsedModules, setCollapsedModules] = useState<Record<string, boolean>>({});
-
-  const toggleModule = (id: string) => {
-    setCollapsedModules((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const filteredModules = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return course.modules;
@@ -75,44 +70,7 @@ export const NestedCourseSidebar: React.FC<NestedCourseSidebarProps> = ({
           <span className="item-text">Overview</span>
         </div>
 
-        {/* Real Course Modules & Topics */}
-        {filteredModules.map((mod, mIdx) => {
-          const modKey = `mod-${mod.id || mIdx}`;
-          const isCollapsed = !!collapsedModules[modKey] && !searchQuery;
-          const cleanModTitle = mod.title.replace(/^Module \d+:\s*/i, '');
-
-          return (
-            <div key={modKey} className="sidebar-module-block">
-              {/* Module Header with Chevron */}
-              <div 
-                className="sidebar-nav-item module-header-item"
-                onClick={() => toggleModule(modKey)}
-              >
-                <span className="item-text">{cleanModTitle}</span>
-                <span className="item-chevron">{isCollapsed ? '⌄' : '⌃'}</span>
-              </div>
-
-              {/* Module Topics (Uniform text size & spacing) */}
-              {!isCollapsed && (
-                <div className="sidebar-topic-list">
-                  {mod.topics.map((topic) => {
-                    const isActive = topic.id === activeTopicId;
-                    return (
-                      <div
-                        key={topic.id}
-                        className={`sidebar-nav-item topic-item ${isActive ? 'active' : ''}`}
-                        onClick={() => onSelectTopic(topic.id)}
-                        title={topic.title}
-                      >
-                        <span className="item-text">{topic.title}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        <CurriculumList modules={filteredModules} compact activeTopicId={activeTopicId} onSelectTopic={onSelectTopic} />
       </div>
     </aside>
   );

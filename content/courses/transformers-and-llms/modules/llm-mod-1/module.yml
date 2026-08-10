@@ -1,5 +1,0 @@
-id: llm-mod-1
-slug: llm-mod-1
-order: 0
-title: "Module 01: Attention Mechanisms & Transformer Core"
-description: Deconstruct Query, Key, Value projections and Scaled Dot-Product Attention.

@@ -23,4 +23,5 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run content:sync
       - run: npm run content:validate
+      - run: npm run content:links
       - run: npm run build

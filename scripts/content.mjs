@@ -8,8 +8,11 @@ import katex from 'katex';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONTENT_ROOT = path.resolve(process.env.CONTENT_ROOT || path.join(ROOT, 'content'));
 const GENERATED_FILE = path.join(ROOT, 'src/data/generatedCourses.ts');
+const ASSET_OUTPUT = path.join(ROOT, 'public/content-assets');
 
 const VALID_DIFFICULTIES = new Set(['Beginner', 'Intermediate', 'Advanced']);
+const VALID_CODE_LANGUAGES = new Set(['text', 'bash', 'sh', 'shell', 'python', 'javascript', 'typescript', 'tsx', 'jsx', 'json', 'yaml', 'yml', 'html', 'css', 'sql', 'go', 'rust', 'java', 'c', 'cpp', 'markdown', 'mermaid']);
+const MAX_WORDS = 20000;
 const VALID_BLOCK_TYPES = new Set([
   'paragraph',
   'heading2',
@@ -45,9 +48,11 @@ async function readDirectories(directory) {
 
 function normalizeContributor(contributor) {
   if (!contributor) return undefined;
+  const github = String(contributor.github || '').trim();
+  assert(/^[A-Za-z0-9-]{1,39}$/.test(github), 'Contributor GitHub handle must be a valid public username');
   return {
     name: String(contributor.name || ''),
-    github: String(contributor.github || ''),
+    github,
     ...(contributor.role ? { role: String(contributor.role) } : {}),
     ...(contributor.avatarUrl ? { avatarUrl: String(contributor.avatarUrl) } : {}),
   };
@@ -75,6 +80,26 @@ function flushParagraph(blocks, lines) {
   const text = lines.join('\n').trim();
   if (text) blocks.push({ type: 'paragraph', text });
   lines.length = 0;
+}
+
+function validateHeadingHierarchy(markdown, filePath) {
+  let previous = 2;
+  for (const line of markdown.split(/\r?\n/)) {
+    const match = line.match(/^(#{1,6})\s+/);
+    if (!match) continue;
+    const level = match[1].length;
+    assert(level >= 2, `${filePath}: top-level # headings belong to metadata, not content.md`);
+    assert(level <= previous + 1, `${filePath}: heading hierarchy skips from h${previous} to h${level}`);
+    previous = level;
+  }
+}
+
+function tokenSimilarity(left, right) {
+  const leftTokens = new Set(left.split(/\s+/).filter(Boolean));
+  const rightTokens = new Set(right.split(/\s+/).filter(Boolean));
+  if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
+  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return intersection / new Set([...leftTokens, ...rightTokens]).size;
 }
 
 function parseMarkdown(markdown) {
@@ -200,6 +225,7 @@ function validateBlocks(blocks, filePath) {
     if (block.type === 'code') {
       assert(typeof block.code === 'string', `${filePath}: code block ${index} needs code`);
       assert(typeof block.language === 'string' && block.language.trim(), `${filePath}: code block ${index} needs language`);
+      assert(VALID_CODE_LANGUAGES.has(block.language.toLowerCase()), `${filePath}: unsupported code language in block ${index}: ${block.language}`);
     }
     if (block.type === 'math') {
       assert(typeof block.math === 'string' && block.math.trim(), `${filePath}: math block ${index} needs math`);
@@ -210,7 +236,7 @@ function validateBlocks(blocks, filePath) {
       }
     }
     if (['image', 'chart'].includes(block.type)) {
-      assert(typeof block.src === 'string' && /^(https:\/\/|\/)/i.test(block.src), `${filePath}: ${block.type} needs an https or relative src`);
+      assert(typeof block.src === 'string' && /^(https:\/\/|\/|\.\/)/i.test(block.src) && !block.src.includes('..'), `${filePath}: ${block.type} needs a safe https or relative src`);
       assert(typeof block.alt === 'string' && block.alt.trim(), `${filePath}: ${block.type} needs alt text`);
     }
     if (block.type === 'embed') {
@@ -219,10 +245,15 @@ function validateBlocks(blocks, filePath) {
       assert(EMBED_HOSTS.has(hostname), `${filePath}: embed host is not on the allowlist: ${hostname}`);
     }
     if (block.type === 'attachment') {
-      assert(typeof block.url === 'string' && /^(https:\/\/|\/)/i.test(block.url), `${filePath}: attachment needs an https or relative url`);
+      assert(typeof block.url === 'string' && /^(https:\/\/|\/|\.\/)/i.test(block.url) && !block.url.includes('..'), `${filePath}: attachment needs a safe https or relative url`);
       assert(typeof block.label === 'string' && block.label.trim(), `${filePath}: attachment needs a label`);
     }
   });
+}
+
+function normalizeMediaUrl(value) {
+  if (typeof value !== 'string' || !value.startsWith('./')) return value;
+  return `/content-assets/${value.slice(2)}`;
 }
 
 function validateSafeText(value, filePath) {
@@ -244,14 +275,19 @@ async function loadContent() {
   const courses = [];
   const seenCourseIds = new Set();
   const seenTopicIds = new Set();
-  const normalizedBodies = new Map();
+  const normalizedBodies = [];
+  const seenCourseSlugs = new Set();
+  const seenModuleIds = new Set();
 
   for (const courseEntry of manifest.courses) {
     const courseDir = path.join(CONTENT_ROOT, 'courses', courseEntry.slug);
     const course = await readYaml(path.join(courseDir, 'course.yml'));
     assert(course.id && course.slug === courseEntry.slug, `${courseDir}: course id/slug mismatch`);
+    assert(/^[a-z0-9][a-z0-9-]{1,63}$/.test(course.slug), `${courseDir}: invalid course slug`);
     assert(!seenCourseIds.has(course.id), `Duplicate course id: ${course.id}`);
+    assert(!seenCourseSlugs.has(course.slug), `Duplicate course slug: ${course.slug}`);
     seenCourseIds.add(course.id);
+    seenCourseSlugs.add(course.slug);
 
     const modules = [];
     const moduleNames = await readDirectories(path.join(courseDir, 'modules'));
@@ -259,6 +295,9 @@ async function loadContent() {
       const moduleDir = path.join(courseDir, 'modules', moduleSlug);
       const module = await readYaml(path.join(moduleDir, 'module.yml'));
       assert(module.id && module.slug === moduleSlug, `${moduleDir}: module id/slug mismatch`);
+      assert(/^[a-z0-9][a-z0-9-]{1,63}$/.test(module.slug), `${moduleDir}: invalid module slug`);
+      assert(!seenModuleIds.has(module.id), `Duplicate module id: ${module.id}`);
+      seenModuleIds.add(module.id);
       const topics = [];
       const topicNames = await readDirectories(path.join(moduleDir, 'topics'));
       for (const topicSlug of topicNames) {
@@ -274,10 +313,16 @@ async function loadContent() {
         assert(metadata.id && metadata.slug === topicSlug, `${relativeTopic}: topic id/slug mismatch`);
         assert(metadata.courseId === course.id, `${relativeTopic}: courseId mismatch`);
         assert(metadata.moduleId === module.id, `${relativeTopic}: moduleId mismatch`);
+        assert(typeof metadata.title === 'string' && metadata.title.trim(), `${relativeTopic}: title is required`);
+        assert(typeof metadata.readingTime === 'string' && /^\d+\s+min(?:\s+read)?$/i.test(metadata.readingTime), `${relativeTopic}: readingTime must look like "10 min read"`);
         assert(VALID_DIFFICULTIES.has(metadata.difficulty), `${relativeTopic}: invalid difficulty`);
         assert(Number.isInteger(metadata.order) && metadata.order >= 0, `${relativeTopic}: order must be a non-negative integer`);
         assert(Array.isArray(metadata.objectives) && metadata.objectives.length > 0, `${relativeTopic}: objectives are required`);
         assert(Array.isArray(metadata.sources), `${relativeTopic}: sources must be an array`);
+        metadata.sources.forEach((source) => {
+          assert(typeof source === 'string' && /^https:\/\//i.test(source), `${relativeTopic}: sources must use https URLs`);
+          try { new URL(source); } catch { throw new Error(`${relativeTopic}: invalid source URL: ${source}`); }
+        });
         assert(metadata.license, `${relativeTopic}: license is required`);
         assert(typeof metadata.aiAssisted === 'boolean', `${relativeTopic}: aiAssisted must be boolean`);
         assert(typeof metadata.authorAttestation === 'boolean', `${relativeTopic}: authorAttestation must be boolean`);
@@ -288,14 +333,32 @@ async function loadContent() {
         assert(!seenTopicIds.has(metadata.id), `Duplicate topic id: ${metadata.id}`);
         seenTopicIds.add(metadata.id);
         assert(content.length <= 200_000, `${relativeTopic}: content.md exceeds 200KB`);
+        assert(content.trim(), `${relativeTopic}: content.md cannot be empty`);
+        assert(content.trim().split(/\s+/).length <= MAX_WORDS, `${relativeTopic}: content.md exceeds ${MAX_WORDS} words`);
         validateSafeText(content, contentPath);
+        validateHeadingHierarchy(content, contentPath);
 
         const normalizedBody = content.replace(/\s+/g, ' ').trim().toLowerCase();
-        assert(!normalizedBodies.has(normalizedBody), `${relativeTopic}: content duplicates ${normalizedBodies.get(normalizedBody)}`);
-        normalizedBodies.set(normalizedBody, relativeTopic);
+        const exactDuplicate = normalizedBodies.find(([body]) => body === normalizedBody);
+        assert(!exactDuplicate, `${relativeTopic}: content duplicates ${exactDuplicate?.[1]}`);
+        const nearDuplicate = normalizedBodies.find(([body]) => tokenSimilarity(body, normalizedBody) >= 0.94);
+        assert(!nearDuplicate, `${relativeTopic}: content is near-duplicate of ${nearDuplicate?.[1]}`);
+        normalizedBodies.push([normalizedBody, relativeTopic]);
 
-        const blocks = parseMarkdown(content);
-        validateBlocks(blocks, contentPath);
+        const parsedBlocks = parseMarkdown(content);
+        validateBlocks(parsedBlocks, contentPath);
+        for (const block of parsedBlocks) {
+          const mediaUrl = block.type === 'image' || block.type === 'chart' ? block.src : block.type === 'attachment' ? block.url : undefined;
+          if (typeof mediaUrl === 'string' && mediaUrl.startsWith('./assets/')) {
+            const assetPath = path.join(CONTENT_ROOT, 'assets', mediaUrl.slice('./assets/'.length));
+            assert(await fileExists(assetPath), `${relativeTopic}: missing asset ${mediaUrl}`);
+          }
+        }
+        const blocks = parsedBlocks.map((block) => {
+          if (block.type === 'image' || block.type === 'chart') return { ...block, src: normalizeMediaUrl(block.src) };
+          if (block.type === 'attachment') return { ...block, url: normalizeMediaUrl(block.url) };
+          return block;
+        });
 
         const checkpoints = Array.isArray(checkpointsDoc.checkpoints) ? checkpointsDoc.checkpoints : [];
         checkpoints.forEach((checkpoint, index) => {
@@ -332,6 +395,15 @@ async function loadContent() {
   return { tracks: manifest.tracks || [], courses };
 }
 
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   const command = process.argv[2] || 'build';
   if (command === 'build' || command === 'validate') {
@@ -339,6 +411,11 @@ async function main() {
     if (command === 'build') {
       const source = `// Generated by scripts/content.mjs. Do not edit directly.\nimport type { Course, Track } from '../types/curriculum';\n\nexport const TRACKS_DATA: Track[] = ${JSON.stringify(data.tracks, null, 2)};\n\nexport const COURSES_DATA: Course[] = ${JSON.stringify(data.courses, null, 2)};\n`;
       await fs.writeFile(GENERATED_FILE, source);
+      await fs.rm(ASSET_OUTPUT, { recursive: true, force: true });
+      if (await fileExists(path.join(CONTENT_ROOT, 'assets'))) {
+        await fs.mkdir(path.dirname(ASSET_OUTPUT), { recursive: true });
+        await fs.cp(path.join(CONTENT_ROOT, 'assets'), ASSET_OUTPUT, { recursive: true });
+      }
       console.log(`Generated ${data.courses.length} courses and ${data.courses.flatMap((course) => course.modules.flatMap((module) => module.topics)).length} topics`);
     } else {
       console.log('Content validation passed');

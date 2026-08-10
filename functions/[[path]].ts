@@ -56,12 +56,26 @@ interface SettingsPayload {
   accentColor?: string;
 }
 
+interface NoteRow {
+  id: string;
+  topic_id: string;
+  source_text: string;
+  note_text: string;
+  style: 'plain' | 'highlight' | 'circle' | 'strike';
+  color: string;
+  selection_start: number | null;
+  selection_end: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
 const SESSION_COOKIE = 'pingala_session';
 const OAUTH_COOKIE = 'pingala_oauth_state';
 const CSRF_COOKIE = 'pingala_csrf';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const OAUTH_TTL_MS = 1000 * 60 * 10;
 const TOPIC_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,99}$/i;
+const NOTE_ID_PATTERN = /^[a-f0-9-]{20,80}$/i;
 
 function now() {
   return Date.now();
@@ -171,7 +185,7 @@ function normalizeSettings(value: unknown): SettingsPayload {
   const normalized: SettingsPayload = {};
   const themes = new Set(['light', 'dark', 'system'] as const);
   const codeThemes = new Set(['onedark', 'github', 'monokai'] as const);
-  const fonts = new Set(['sans', 'serif', 'mono', 'handwritten'] as const);
+  const fonts = new Set(['sans', 'serif', 'mono', 'handwritten', 'atkinson', 'lexend'] as const);
   const sizes = new Set(['compact', 'standard', 'large'] as const);
   const widths = new Set(['standard', 'spacious'] as const);
 
@@ -414,6 +428,108 @@ function validTopicId(topicId: string) {
   return TOPIC_ID_PATTERN.test(topicId);
 }
 
+function validNoteId(noteId: string) {
+  return NOTE_ID_PATTERN.test(noteId);
+}
+
+function notePayload(row: NoteRow) {
+  return {
+    id: row.id,
+    topicId: row.topic_id,
+    sourceText: row.source_text,
+    noteText: row.note_text,
+    style: row.style,
+    color: row.color,
+    selectionStart: row.selection_start,
+    selectionEnd: row.selection_end,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+  };
+}
+
+function noteStyle(value: unknown): NoteRow['style'] | undefined {
+  return enumValue(value, new Set(['plain', 'highlight', 'circle', 'strike'] as const));
+}
+
+function noteColor(value: unknown) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : '#f5c84b';
+}
+
+function selectionOffset(value: unknown) {
+  return value === null || value === undefined
+    ? null
+    : Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 100000
+      ? Number(value)
+      : undefined;
+}
+
+async function listNotes(request: Request, env: AppEnv) {
+  const result = await requireUser(request, env);
+  if (result instanceof Response) return result;
+  const topicId = new URL(request.url).searchParams.get('topicId');
+  if (topicId && !validTopicId(topicId)) return errorResponse('Invalid topic id', 400);
+  const query = topicId
+    ? env.DB.prepare('SELECT id, topic_id, source_text, note_text, style, color, selection_start, selection_end, created_at, updated_at FROM reading_notes WHERE user_id = ? AND topic_id = ? ORDER BY created_at DESC').bind(result.id, topicId)
+    : env.DB.prepare('SELECT id, topic_id, source_text, note_text, style, color, selection_start, selection_end, created_at, updated_at FROM reading_notes WHERE user_id = ? ORDER BY created_at DESC').bind(result.id);
+  const rows = await query.all<NoteRow>();
+  return json({ notes: rows.results.map(notePayload) });
+}
+
+async function createNote(request: Request, env: AppEnv) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
+  const result = await requireUser(request, env);
+  if (result instanceof Response) return result;
+  let body: Record<string, unknown>;
+  try { body = await parseJson(request, 32 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
+  const topicId = cleanString(body.topicId, 100);
+  const sourceText = cleanString(body.sourceText, 1200);
+  const noteText = cleanString(body.noteText, 5000);
+  const style = noteStyle(body.style);
+  const start = selectionOffset(body.selectionStart);
+  const end = selectionOffset(body.selectionEnd);
+  if (!validTopicId(topicId) || !sourceText || !style || start === undefined || end === undefined) return errorResponse('Invalid note payload', 400);
+  const timestamp = now();
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO reading_notes (id, user_id, topic_id, source_text, note_text, style, color, selection_start, selection_end, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, result.id, topicId, sourceText, noteText, style, noteColor(body.color), start, end, timestamp, timestamp).run();
+  const row = await env.DB.prepare('SELECT id, topic_id, source_text, note_text, style, color, selection_start, selection_end, created_at, updated_at FROM reading_notes WHERE id = ? AND user_id = ?').bind(id, result.id).first<NoteRow>();
+  return row ? json({ note: notePayload(row) }, 201) : errorResponse('Could not load created note', 500);
+}
+
+async function updateNote(request: Request, env: AppEnv, noteId: string) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
+  const result = await requireUser(request, env);
+  if (result instanceof Response) return result;
+  if (!validNoteId(noteId)) return errorResponse('Invalid note id', 400);
+  let body: Record<string, unknown>;
+  try { body = await parseJson(request, 16 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
+  const style = body.style === undefined ? undefined : noteStyle(body.style);
+  if (body.style !== undefined && !style) return errorResponse('Invalid note style', 400);
+  const noteText = body.noteText === undefined ? undefined : cleanString(body.noteText, 5000);
+  const color = body.color === undefined ? undefined : noteColor(body.color);
+  const current = await env.DB.prepare('SELECT id, topic_id, source_text, note_text, style, color, selection_start, selection_end, created_at, updated_at FROM reading_notes WHERE id = ? AND user_id = ?').bind(noteId, result.id).first<NoteRow>();
+  if (!current) return errorResponse('Note not found', 404);
+  await env.DB.prepare(
+    'UPDATE reading_notes SET note_text = ?, style = ?, color = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+  ).bind(noteText === undefined ? current.note_text : noteText, style || current.style, color || current.color, now(), noteId, result.id).run();
+  const updated = await env.DB.prepare('SELECT id, topic_id, source_text, note_text, style, color, selection_start, selection_end, created_at, updated_at FROM reading_notes WHERE id = ? AND user_id = ?').bind(noteId, result.id).first<NoteRow>();
+  return updated ? json({ note: notePayload(updated) }) : errorResponse('Could not load updated note', 500);
+}
+
+async function deleteNote(request: Request, env: AppEnv, noteId: string) {
+  const csrfError = csrfFailure(request);
+  if (csrfError) return csrfError;
+  const result = await requireUser(request, env);
+  if (result instanceof Response) return result;
+  if (!validNoteId(noteId)) return errorResponse('Invalid note id', 400);
+  const deleted = await env.DB.prepare('DELETE FROM reading_notes WHERE id = ? AND user_id = ?').bind(noteId, result.id).run();
+  return deleted.meta.changes > 0 ? json({ ok: true }) : errorResponse('Note not found', 404);
+}
+
 async function syncProgress(request: Request, env: AppEnv) {
   const csrfError = csrfFailure(request);
   if (csrfError) return csrfError;
@@ -461,6 +577,8 @@ export const onRequest: PagesFunction<AppEnv> = async (context) => {
     if (url.pathname === '/api/me/settings' && request.method === 'PATCH') return updateSettings(request, env);
     if (url.pathname === '/api/progress' && request.method === 'GET') return progress(request, env);
     if (url.pathname === '/api/progress/sync' && request.method === 'POST') return syncProgress(request, env);
+    if (url.pathname === '/api/notes' && request.method === 'GET') return listNotes(request, env);
+    if (url.pathname === '/api/notes' && request.method === 'POST') return createNote(request, env);
 
     const progressMatch = url.pathname.match(/^\/api\/progress\/([^/]+)$/);
     if (progressMatch && ['PUT', 'DELETE'].includes(request.method)) {
@@ -470,6 +588,9 @@ export const onRequest: PagesFunction<AppEnv> = async (context) => {
     if (bookmarkMatch && ['PUT', 'DELETE'].includes(request.method)) {
       return toggleTopic(request, env, bookmarkMatch[1], 'bookmarks', request.method === 'PUT');
     }
+    const noteMatch = url.pathname.match(/^\/api\/notes\/([^/]+)$/);
+    if (noteMatch && request.method === 'PATCH') return updateNote(request, env, decodeURIComponent(noteMatch[1]));
+    if (noteMatch && request.method === 'DELETE') return deleteNote(request, env, decodeURIComponent(noteMatch[1]));
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return errorResponse('Not found', 404);
     return context.next();
   } catch (error) {
