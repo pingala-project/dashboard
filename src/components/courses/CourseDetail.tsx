@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { Course } from '../../types/curriculum';
 import { CourseIcon } from './CourseIcon';
-import { Clock01Icon, CheckmarkCircle02Icon, ArrowDown01Icon } from 'hugeicons-react';
+import { Clock01Icon, CheckmarkCircle02Icon } from 'hugeicons-react';
+import { CurriculumList } from './CurriculumList';
 
 interface CourseDetailProps {
   course: Course;
@@ -19,26 +20,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   const [isSaved, setIsSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<'lessons' | 'overview'>('lessons');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(() => {
-    // Expand first module by default
-    const first = course.modules[0]?.id;
-    return first ? new Set([first]) : new Set();
-  });
-
-  const toggleModule = (modId: string) => {
-    setExpandedModules(prev => {
-      const next = new Set(prev);
-      if (next.has(modId)) next.delete(modId);
-      else next.add(modId);
-      return next;
-    });
-  };
-
   const allTopics = course.modules.flatMap(m => m.topics);
   const completedCount = allTopics.filter(t => completedTopicIds.has(t.id)).length;
   const firstTopic = allTopics[0];
 
-  const activeContributor = course.contributor || { name: 'Pingala Contributors', github: 'rishabh' };
+  const activeContributor = course.contributor || { name: 'Pingala Contributors', github: 'pingala-project' };
 
   return (
     <div className="course-detail-page">
@@ -148,79 +134,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
       {/* ── Content: Module / Topic List ──────────────────────────────── */}
       {activeTab === 'lessons' && (
         <div className="course-modules-list">
-          {course.modules.map((mod, mIdx) => {
-            const cleanTitle = mod.title.replace(/^Module \d+:\s*/i, '');
-            const isExpanded = expandedModules.has(mod.id);
-            const modCompletedCount = mod.topics.filter(t => completedTopicIds.has(t.id)).length;
-
-            return (
-              <div key={mod.id} className="course-module-block">
-                {/* Module header */}
-                <button
-                  className="course-module-header"
-                  onClick={() => toggleModule(mod.id)}
-                >
-                  <div className="module-header-left">
-                    <span className="module-number">
-                      {String(mIdx + 1).padStart(2, '0')}
-                    </span>
-                    <div className="module-header-text">
-                      <span className="module-title">{cleanTitle}</span>
-                      <span className="module-meta">
-                        {mod.topics.length} lessons
-                        {modCompletedCount > 0 && ` · ${modCompletedCount}/${mod.topics.length} done`}
-                      </span>
-                    </div>
-                  </div>
-                  <ArrowDown01Icon
-                    size={16}
-                    className={`module-chevron ${isExpanded ? 'expanded' : ''}`}
-                  />
-                </button>
-
-                {/* Topic rows */}
-                {isExpanded && (
-                  <div className="course-topics-list">
-                    {mod.topics.map((topic, tIdx) => {
-                      const isDone = completedTopicIds.has(topic.id);
-                      return (
-                        <button
-                          key={topic.id}
-                          className={`course-topic-row ${isDone ? 'done' : ''}`}
-                          onClick={() => onSelectTopic(topic.id)}
-                        >
-                          <div className="topic-row-left">
-                            <span className={`topic-index-dot ${isDone ? 'done' : ''}`}>
-                              {isDone
-                                ? <CheckmarkCircle02Icon size={16} color="#22c55e" />
-                                : <span className="topic-num">{tIdx + 1}</span>
-                              }
-                            </span>
-                            <div className="topic-row-text">
-                              <span className="topic-title">{topic.title}</span>
-                              {topic.summary && (
-                                <span className="topic-summary">{topic.summary}</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="topic-row-right">
-                            {topic.readingTime && (
-                              <span className="topic-read-time">{topic.readingTime}</span>
-                            )}
-                            {topic.difficulty && (
-                              <span className={`topic-difficulty-badge ${topic.difficulty.toLowerCase()}`}>
-                                {topic.difficulty}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <CurriculumList modules={course.modules} completedTopicIds={completedTopicIds} onSelectTopic={onSelectTopic} />
         </div>
       )}
 

@@ -51,7 +51,7 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
   const { settings } = useSettings();
   const activeContributor = topic.contributor || course.contributor || {
     name: 'Pingala Contributors',
-    github: 'rishabh',
+    github: 'pingala-project',
   };
 
   const diffColor = DIFFICULTY_COLOR[topic.difficulty?.toLowerCase() || 'beginner'] || '#22c55e';

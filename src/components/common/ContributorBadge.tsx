@@ -10,8 +10,8 @@ interface ContributorBadgeProps {
 
 export const ContributorBadge: React.FC<ContributorBadgeProps> = ({
   contributor = {
-    name: 'Rishabh & Pingala Contributors',
-    github: 'rishabh',
+    name: 'Pingala Contributors',
+    github: 'pingala-project',
     role: 'Maintainer',
   },
   variant = 'card',
@@ -57,7 +57,14 @@ export const ContributorBadge: React.FC<ContributorBadgeProps> = ({
         <div className="contributor-info-col">
           <div className="contributor-role-tag">{label}</div>
           <div className="contributor-name-row">
-            <span className="contributor-full-name">{contributor.name}</span>
+            <a
+              href={githubProfileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="contributor-full-name contributor-name-link"
+            >
+              {contributor.name}
+            </a>
           </div>
           <p className="contributor-subtext">
             Pingala Curriculum Contributor

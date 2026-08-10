@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">Pingala content pipeline illustration</title>
+  <desc id="desc">A blue line moves from Markdown to a reviewed release and then into a reader.</desc>
+  <rect width="1200" height="520" rx="28" fill="#eff6ff"/>
+  <path d="M110 360 C250 150 360 410 510 250 S800 120 1090 220" fill="none" stroke="#2563eb" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="110" cy="360" r="22" fill="#1d4ed8"/><circle cx="510" cy="250" r="22" fill="#2563eb"/><circle cx="1090" cy="220" r="22" fill="#60a5fa"/>
+  <g fill="#1e3a8a" font-family="Arial, sans-serif" font-size="34" font-weight="700">
+    <text x="75" y="425">Markdown</text><text x="440" y="195">Reviewed</text><text x="1010" y="165">Reader</text>
+  </g>
+  <g fill="#3b82f6" opacity=".16"><circle cx="250" cy="115" r="58"/><circle cx="760" cy="390" r="80"/><circle cx="960" cy="90" r="36"/></g>
+</svg>

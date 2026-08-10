@@ -1,0 +1,9 @@
+id: reader-showcase
+slug: reader-showcase
+order: 0
+title: "Reader and Content Showcase"
+description: Every safe content block, reader control, and contribution convention in one place.
+contributor:
+  name: Pingala Project
+  github: pingala-project
+  role: Curriculum maintainers

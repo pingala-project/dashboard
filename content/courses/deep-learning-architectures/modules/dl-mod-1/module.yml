@@ -1,5 +1,0 @@
-id: dl-mod-1
-slug: dl-mod-1
-order: 0
-title: "Module 01: Backpropagation & Computational Graphs"
-description: Exact analytical chain rule derivation and backward tensor passes.

@@ -4,11 +4,11 @@ import { useAuth } from './AuthContext';
 
 const DEFAULT_SETTINGS: AppSettings = {
   profile: {
-    name: 'Rishabh',
+    name: '',
     email: '',
-    github: 'rishabh',
-    bio: 'Learning AI & Machine Learning from first principles with Pingala.',
-    learningGoal: 'Master Foundations & Transformer Architectures',
+    github: '',
+    bio: '',
+    learningGoal: '',
   },
   appearance: {
     theme: 'light',
@@ -30,6 +30,17 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const STORAGE_KEY = 'pingala_app_settings_v1';
+
+function readLegacySettings(): Partial<AppSettings> | null {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function mergeSettings(current: AppSettings, remote: AppSettingsPatch, user: { name: string; login: string; email: string | null; bio: string; learningGoal: string; avatarUrl: string | null }): AppSettings {
   return {
@@ -65,17 +76,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, updateProfile: updateRemoteProfile, refreshSettings, syncSettings } = useAuth();
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-      }
-    } catch (e) {
-      console.error('Error loading settings from storage', e);
-    }
-    return DEFAULT_SETTINGS;
-  });
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const settingsRef = useRef(settings);
   const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
 
@@ -86,33 +87,31 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!user) {
       setRemoteSettingsHydrated(false);
+      setSettings(DEFAULT_SETTINGS);
       return;
     }
 
     let active = true;
-    const localSettings = settingsRef.current;
+    const legacySettings = readLegacySettings();
+    const localSettings = legacySettings
+      ? { ...DEFAULT_SETTINGS, ...legacySettings, profile: { ...DEFAULT_SETTINGS.profile, ...legacySettings.profile }, appearance: { ...DEFAULT_SETTINGS.appearance, ...legacySettings.appearance }, display: { ...DEFAULT_SETTINGS.display, ...legacySettings.display }, learning: { ...DEFAULT_SETTINGS.learning, ...legacySettings.learning } }
+      : settingsRef.current;
     void (async () => {
       const remote = await refreshSettings();
       if (!active) return;
       if (remote) {
         setSettings((previous) => mergeSettings(previous, remote, user));
+        localStorage.removeItem(STORAGE_KEY);
       } else {
-        await syncSettings(localSettings);
+        setSettings(mergeSettings(localSettings, {}, user));
+        const synced = await syncSettings(localSettings);
+        if (synced) localStorage.removeItem(STORAGE_KEY);
       }
       if (active) setRemoteSettingsHydrated(true);
     })();
 
     return () => { active = false; };
   }, [refreshSettings, syncSettings, user]);
-
-  // Save to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    } catch (e) {
-      console.error('Error saving settings to storage', e);
-    }
-  }, [settings]);
 
   useEffect(() => {
     if (!user || !remoteSettingsHydrated) return;

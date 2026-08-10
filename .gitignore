@@ -15,6 +15,7 @@ src/data/generatedCourses.ts
 .dev.vars
 .wrangler
 .content-cache
+public/content-assets
 _worker.bundle
 
 # Editor directories and files

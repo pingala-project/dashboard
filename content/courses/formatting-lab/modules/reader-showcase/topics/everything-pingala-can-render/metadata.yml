@@ -1,0 +1,23 @@
+id: topic-everything-pingala-can-render
+slug: everything-pingala-can-render
+title: Everything Pingala Can Render
+courseId: formatting-lab
+moduleId: reader-showcase
+order: 0
+readingTime: 20 min read
+difficulty: Beginner
+summary: A hands-on introduction to Pingala's typography, math, code, media, checkpoints, and reading notes.
+objectives:
+  - Read the visual language used across Pingala lessons.
+  - Recognize the safe Markdown and directive syntax contributors can submit.
+  - Practice highlighting, circling, crossing out, and saving a handwritten note.
+license: CC-BY-4.0
+sources:
+  - https://www.markdownguide.org/basic-syntax/
+  - https://katex.org/docs/supported.html
+aiAssisted: false
+authorAttestation: true
+contributor:
+  name: Pingala Project
+  github: pingala-project
+  role: Curriculum maintainers

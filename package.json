@@ -13,6 +13,7 @@
     "content:migrate": "node --experimental-strip-types scripts/migrate-content.mjs",
     "content:sync": "node scripts/sync-content.mjs",
     "content:validate": "node scripts/content.mjs validate",
+    "content:links": "node scripts/check-links.mjs",
     "content:build": "node scripts/content.mjs build",
     "test:content": "node scripts/content.mjs validate",
     "typecheck": "tsc -b --pretty false",
