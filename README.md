@@ -44,7 +44,7 @@ GITHUB_CLIENT_SECRET
 SESSION_SECRET
 ```
 
-Before deployment, replace the D1 placeholder in `wrangler.jsonc`, create the GitHub OAuth callback at `/auth/github/callback`, apply migrations, and configure the Cloudflare deployment secrets. See [docs/github-org-setup.md](docs/github-org-setup.md).
+Before deployment, register the GitHub OAuth callback at `/auth/github/callback`, apply every D1 migration, and configure `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `SESSION_SECRET` in the **Cloudflare Pages project**. GitHub Actions repository secrets are only for the Cloudflare deployment token and account ID; they do not become Pages Functions runtime secrets. See [OPERATIONS.md](OPERATIONS.md).
 
 ## Contribution policy
 

@@ -147,7 +147,18 @@ function redirect(request: Request, location: string, headers: HeadersInit = {})
 }
 
 function appOrigin(request: Request, env: AppEnv) {
-  return env.PUBLIC_APP_ORIGIN || new URL(request.url).origin;
+  const requestOrigin = new URL(request.url).origin;
+  if (!env.PUBLIC_APP_ORIGIN) return requestOrigin;
+  try {
+    return new URL(env.PUBLIC_APP_ORIGIN).origin;
+  } catch {
+    return requestOrigin;
+  }
+}
+
+function authErrorRedirect(request: Request, env: AppEnv, code: string, clearState = true) {
+  const headers: HeadersInit = clearState ? { 'Set-Cookie': clearCookie(request, OAUTH_COOKIE) } : {};
+  return redirect(request, `${appOrigin(request, env)}/?auth_error=${encodeURIComponent(code)}`, headers);
 }
 
 function isConfigured(env: AppEnv) {
@@ -266,12 +277,23 @@ async function githubJson<T>(url: string, token: string, init: RequestInit = {})
 
 async function beginGitHubLogin(request: Request, env: AppEnv) {
   if (!isConfigured(env)) return errorResponse('GitHub login is not configured yet', 503);
+  // OAuth state cookies are host-only. Always start on the same canonical host
+  // configured as GitHub's callback URL, otherwise a custom domain can lose the
+  // cookie when GitHub redirects back to the Pages domain.
+  const canonicalOrigin = appOrigin(request, env);
+  if (new URL(request.url).origin !== canonicalOrigin) {
+    return redirect(request, new URL('/auth/github', canonicalOrigin).toString());
+  }
   const state = randomToken(32);
   const timestamp = now();
-  await env.DB.prepare('DELETE FROM oauth_states WHERE expires_at <= ?').bind(timestamp).run();
-  await env.DB.prepare('INSERT INTO oauth_states (state_hash, expires_at, created_at) VALUES (?, ?, ?)')
-    .bind(await digest(state), timestamp + OAUTH_TTL_MS, timestamp)
-    .run();
+  try {
+    await env.DB.prepare('DELETE FROM oauth_states WHERE expires_at <= ?').bind(timestamp).run();
+    await env.DB.prepare('INSERT INTO oauth_states (state_hash, expires_at, created_at) VALUES (?, ?, ?)')
+      .bind(await digest(state), timestamp + OAUTH_TTL_MS, timestamp)
+      .run();
+  } catch {
+    return authErrorRedirect(request, env, 'database');
+  }
 
   const params = new URLSearchParams({
     client_id: env.GITHUB_CLIENT_ID,
@@ -285,21 +307,30 @@ async function beginGitHubLogin(request: Request, env: AppEnv) {
 }
 
 async function finishGitHubLogin(request: Request, env: AppEnv) {
-  if (!isConfigured(env)) return redirect(request, `${appOrigin(request, env)}/?auth_error=not_configured`);
+  if (!isConfigured(env)) return authErrorRedirect(request, env, 'not_configured');
   const url = new URL(request.url);
+  const providerError = url.searchParams.get('error');
+  if (providerError) {
+    return authErrorRedirect(request, env, providerError === 'access_denied' ? 'oauth_cancelled' : 'oauth_denied');
+  }
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const cookieState = getCookie(request, OAUTH_COOKIE);
   if (!code || !state || !cookieState || state !== cookieState) {
-    return redirect(request, `${appOrigin(request, env)}/?auth_error=invalid_state`, { 'Set-Cookie': clearCookie(request, OAUTH_COOKIE) });
+    return authErrorRedirect(request, env, 'invalid_state');
   }
 
   const stateHash = await digest(state);
-  const storedState = await env.DB.prepare('SELECT state_hash FROM oauth_states WHERE state_hash = ? AND expires_at > ?')
-    .bind(stateHash, now()).first<{ state_hash: string }>();
-  await env.DB.prepare('DELETE FROM oauth_states WHERE state_hash = ?').bind(stateHash).run();
+  let storedState: { state_hash: string } | null;
+  try {
+    storedState = await env.DB.prepare('SELECT state_hash FROM oauth_states WHERE state_hash = ? AND expires_at > ?')
+      .bind(stateHash, now()).first<{ state_hash: string }>();
+    await env.DB.prepare('DELETE FROM oauth_states WHERE state_hash = ?').bind(stateHash).run();
+  } catch {
+    return authErrorRedirect(request, env, 'database');
+  }
   if (!storedState) {
-    return redirect(request, `${appOrigin(request, env)}/?auth_error=expired_state`, { 'Set-Cookie': clearCookie(request, OAUTH_COOKIE) });
+    return authErrorRedirect(request, env, 'expired_state');
   }
 
   const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
@@ -312,11 +343,16 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
       redirect_uri: new URL('/auth/github/callback', appOrigin(request, env)).toString(),
     }),
   });
-  if (!tokenResponse.ok) return redirect(request, `${appOrigin(request, env)}/?auth_error=token_exchange`);
+  if (!tokenResponse.ok) return authErrorRedirect(request, env, 'token_exchange');
   const tokenData = await tokenResponse.json() as GitHubTokenResponse;
-  if (!tokenData.access_token) return redirect(request, `${appOrigin(request, env)}/?auth_error=${encodeURIComponent(tokenData.error || 'token_exchange')}`);
+  if (!tokenData.access_token) return authErrorRedirect(request, env, tokenData.error || 'token_exchange');
 
-  const profile = await githubJson<GitHubProfile>('https://api.github.com/user', tokenData.access_token);
+  let profile: GitHubProfile;
+  try {
+    profile = await githubJson<GitHubProfile>('https://api.github.com/user', tokenData.access_token);
+  } catch {
+    return authErrorRedirect(request, env, 'github_profile');
+  }
   let githubEmail: string | null = null;
   try {
     const githubEmails = await githubJson<GitHubEmail[]>('https://api.github.com/user/emails', tokenData.access_token);
@@ -327,19 +363,22 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
     // Public GitHub profiles can still authenticate if the email endpoint is unavailable.
   }
   const timestamp = now();
-  const existing = await env.DB.prepare('SELECT id, github_email FROM users WHERE github_id = ?').bind(String(profile.id)).first<{ id: string; github_email: string | null }>();
-  const userId = existing?.id || crypto.randomUUID();
-  await env.DB.prepare(
-    `INSERT INTO users (id, github_id, github_login, github_email, display_name, avatar_url, bio, learning_goal, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?)
-     ON CONFLICT(github_id) DO UPDATE SET github_login = excluded.github_login,
-       github_email = excluded.github_email, display_name = excluded.display_name,
-       avatar_url = excluded.avatar_url, updated_at = excluded.updated_at`,
-  ).bind(userId, String(profile.id), profile.login, githubEmail || existing?.github_email || null, profile.name || profile.login, profile.avatar_url, timestamp, timestamp).run();
-
   const rawSession = randomToken(32);
-  await env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), userId, await digest(rawSession, env.SESSION_SECRET), timestamp + SESSION_TTL_MS, timestamp).run();
+  try {
+    const existing = await env.DB.prepare('SELECT id, github_email FROM users WHERE github_id = ?').bind(String(profile.id)).first<{ id: string; github_email: string | null }>();
+    const userId = existing?.id || crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO users (id, github_id, github_login, github_email, display_name, avatar_url, bio, learning_goal, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?)
+       ON CONFLICT(github_id) DO UPDATE SET github_login = excluded.github_login,
+         github_email = excluded.github_email, display_name = excluded.display_name,
+         avatar_url = excluded.avatar_url, updated_at = excluded.updated_at`,
+    ).bind(userId, String(profile.id), profile.login, githubEmail || existing?.github_email || null, profile.name || profile.login, profile.avatar_url, timestamp, timestamp).run();
+    await env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), userId, await digest(rawSession, env.SESSION_SECRET), timestamp + SESSION_TTL_MS, timestamp).run();
+  } catch {
+    return authErrorRedirect(request, env, 'database');
+  }
   const headers = new Headers({ Location: `${appOrigin(request, env)}/` });
   headers.append('Set-Cookie', setCookie(request, SESSION_COOKIE, rawSession, Math.floor(SESSION_TTL_MS / 1000)));
   headers.append('Set-Cookie', clearCookie(request, OAUTH_COOKIE));
@@ -566,8 +605,8 @@ async function toggleTopic(request: Request, env: AppEnv, topicId: string, table
 
 export const onRequest: PagesFunction<AppEnv> = async (context) => {
   const { request, env } = context;
+  const url = new URL(request.url);
   try {
-    const url = new URL(request.url);
     if (url.pathname === '/auth/github' && request.method === 'GET') return beginGitHubLogin(request, env);
     if (url.pathname === '/auth/github/callback' && request.method === 'GET') return finishGitHubLogin(request, env);
     if (url.pathname === '/auth/logout' && request.method === 'POST') return logout(request, env);
@@ -595,6 +634,9 @@ export const onRequest: PagesFunction<AppEnv> = async (context) => {
     return context.next();
   } catch (error) {
     console.error(JSON.stringify({ event: 'request_error', message: error instanceof Error ? error.message : 'Unknown error' }));
+    if (url.pathname === '/auth/github' || url.pathname === '/auth/github/callback') {
+      return authErrorRedirect(request, env, 'server_error');
+    }
     return errorResponse('Internal server error', 500);
   }
 };

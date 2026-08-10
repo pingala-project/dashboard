@@ -36,3 +36,20 @@ gh secret set CLOUDFLARE_ACCOUNT_ID --repo pingala-project/landing --body "$CLOU
 ```
 
 The API token is never stored in the repository, `.env`, workflow YAML, or browser. D1 migrations run only from a trusted `main` deployment workflow.
+
+## Configure the Pages runtime for GitHub login
+
+The following values must be stored in the Cloudflare Pages project itself; GitHub Actions repository secrets cannot be read by Pages Functions. Set the GitHub OAuth App callback URL to `https://pingala-dashboard.pages.dev/auth/github/callback` (or update `PUBLIC_APP_ORIGIN` and the OAuth App together if using a custom domain).
+
+```sh
+export GITHUB_CLIENT_ID="<oauth-client-id>"
+read -s GITHUB_CLIENT_SECRET
+export GITHUB_CLIENT_SECRET
+SESSION_SECRET="$(openssl rand -hex 32)"
+
+printf '%s' "$GITHUB_CLIENT_ID" | npx wrangler pages secret put GITHUB_CLIENT_ID --project-name=pingala-dashboard
+printf '%s' "$GITHUB_CLIENT_SECRET" | npx wrangler pages secret put GITHUB_CLIENT_SECRET --project-name=pingala-dashboard
+printf '%s' "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --project-name=pingala-dashboard
+```
+
+After setting the replacement deployment token as the two GitHub Actions secrets above, run `Apply D1 migrations` and then `Deploy dashboard to Cloudflare Pages` from `main`.
