@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { COURSES_DATA } from './data/coursesData';
 import type { ActiveView, Course, Topic } from './types/curriculum';
 import { SettingsProvider } from './context/SettingsContext';
@@ -15,6 +15,49 @@ import { ToastProvider, useToast } from './context/ToastContext';
 
 const COMPLETED_STORAGE_KEY = 'pingala_completed_topics';
 const BOOKMARKS_STORAGE_KEY = 'pingala_bookmarked_topics';
+
+const AUTH_ERROR_MESSAGES: Record<string, { title: string; message: string }> = {
+  oauth_cancelled: {
+    title: 'GitHub login cancelled',
+    message: 'No changes were made. You can try again whenever you are ready.',
+  },
+  oauth_denied: {
+    title: 'GitHub did not approve login',
+    message: 'Approve the requested GitHub profile access, then try again.',
+  },
+  invalid_state: {
+    title: 'Login session could not be verified',
+    message: 'Start login again in this tab. If it repeats, allow cookies for Pingala and GitHub.',
+  },
+  expired_state: {
+    title: 'Login session expired',
+    message: 'GitHub login must be completed within ten minutes. Please try again.',
+  },
+  token_exchange: {
+    title: 'GitHub login could not be completed',
+    message: 'The OAuth app credentials or callback URL need attention. Please try again shortly.',
+  },
+  bad_verification_code: {
+    title: 'GitHub login code expired',
+    message: 'Start a fresh GitHub login from Pingala.',
+  },
+  github_profile: {
+    title: 'GitHub profile could not be loaded',
+    message: 'Check that the OAuth app has read:user and user:email access, then try again.',
+  },
+  not_configured: {
+    title: 'GitHub login is not ready',
+    message: 'The production OAuth configuration is incomplete.',
+  },
+  database: {
+    title: 'Sign-in data is not ready',
+    message: 'The production D1 migration has not finished yet. Please try again after deployment.',
+  },
+  server_error: {
+    title: 'Sign-in service needs attention',
+    message: 'The server could not finish login. Please try again after the latest migration is deployed.',
+  },
+};
 
 function readLegacyIds(key: string) {
   try {
@@ -41,6 +84,21 @@ const AppContent: React.FC = () => {
   const [bookmarkedTopicIds, setBookmarkedTopicIds] = useState<Set<string>>(new Set());
   const [remoteProgressHydrated, setRemoteProgressHydrated] = useState(false);
   const [legacyProgressPending, setLegacyProgressPending] = useState(false);
+  const handledAuthError = useRef<string | null>(null);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('auth_error');
+    if (!code || handledAuthError.current === code) return;
+    handledAuthError.current = code;
+    const feedback = AUTH_ERROR_MESSAGES[code] || {
+      title: 'GitHub login could not be completed',
+      message: 'Please start a fresh login from Pingala.',
+    };
+    showToast(feedback.title, feedback.message, 'error');
+    url.searchParams.delete('auth_error');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [showToast]);
 
   useEffect(() => {
     let active = true;
