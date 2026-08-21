@@ -65,3 +65,58 @@ printf '%s' "$SESSION_SECRET" | npx wrangler pages secret put SESSION_SECRET --p
 ```
 
 After setting the replacement deployment token as the two GitHub Actions secrets above, run `Apply D1 migrations` and then `Deploy dashboard to Cloudflare Pages` from `main`.
+
+## Harden branch protection (owner, one-time)
+
+Apply these to **both** `pingala-project/dashboard` and the subject repository (`pingala-project/ai-ml`). The required status checks below match the workflows in `.github/workflows/`.
+
+```sh
+gh api repos/pingala-project/dashboard/rulesets 2>/dev/null || true
+# Classic branch protection for main (idempotent PUT):
+gh api -X PUT repos/pingala-project/dashboard/branches/main/protection --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["Dashboard CI / validate", "Security checks / CodeQL", "Content review gate / New lesson approvals"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "require_code_owner_reviews": true,
+    "dismiss_stale_reviews": true,
+    "require_last_push_approval": true,
+    "required_approving_review_count": 1
+  },
+  "restrictions": null,
+  "required_conversation_resolution": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+EOF
+```
+
+Key settings and why they matter:
+
+- `enforce_admins: true` — without it, admins bypass every rule above.
+- `require_last_push_approval: true` — the exact commit that merges was reviewed by a person.
+- `Content review gate / New lesson approvals` — machine-enforces the two-approval policy for new lessons (see `content-review-gate.yml`).
+
+Enable secret scanning and push protection org-wide (**Settings → Code security**), so credentials can never be pushed to any Pingala repository.
+
+## PR preview deployments
+
+Every pull request automatically gets a live preview:
+
+1. `PR build` builds the bundle in an unprivileged run (no secrets available to forks).
+2. `Deploy PR preview` runs via `workflow_run` in the base repository, downloads the artifact, and deploys it with `wrangler pages deploy --branch=preview-pr-<number>`.
+3. A bot comment posts the preview URL (`https://preview-pr-<number>.pingala-dashboard.pages.dev`) and updates it on every push.
+
+Reviewers should check rendered lessons, embeds, and media on the preview before approving. Previews expire with their artifacts (7 days).
+
+## Rate limiting
+
+The Pages Function enforces fixed-window limits backed by D1 (`rate_limits` table, migration `0004_rate_limits.sql`):
+
+- Auth endpoints (`/auth/github`, `/auth/github/callback`): 10 requests/min per IP → HTTP 429.
+- Authenticated mutations (notes, progress sync, profile/settings): 60 requests/min per user → HTTP 429.
+
+The limiter fails open if the table is missing; apply migrations before deploying.
