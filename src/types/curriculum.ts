@@ -126,13 +126,3 @@ export interface Track {
   description: string;
   courseIds: string[];
 }
-
-export type ActiveView = 
-  | { type: 'all_courses' }
-  | { type: 'track'; trackId: string }
-  | { type: 'course'; courseId: string }
-  | { type: 'topic'; courseId: string; topicId: string }
-  | { type: 'tasks' }
-  | { type: 'bookmarks' }
-  | { type: 'calendar' }
-  | { type: 'settings' };

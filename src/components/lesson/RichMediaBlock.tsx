@@ -1,5 +1,6 @@
-import React from 'react';
-import { LinkSquare02Icon } from 'hugeicons-react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { LinkSquare02Icon, Cancel01Icon } from 'hugeicons-react';
 import type { ContentBlock } from '../../types/curriculum';
 import { renderRichText } from '../../utils/formatContent';
 
@@ -21,7 +22,34 @@ function safeUrl(value?: string) {
   }
 }
 
+/** Full-screen click-to-zoom viewer for lesson figures. */
+const ImageLightbox: React.FC<{ src: string; alt: string; onClose: () => void }> = ({ src, alt, onClose }) => {
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div className="image-lightbox-overlay" onClick={onClose} role="dialog" aria-label="Zoomed image">
+      <button className="image-lightbox-close" aria-label="Close zoomed image">
+        <Cancel01Icon size={20} />
+      </button>
+      <img src={src} alt={alt} onClick={(event) => event.stopPropagation()} />
+    </div>,
+    document.body
+  );
+};
+
 export const RichMediaBlock: React.FC<{ block: ContentBlock }> = ({ block }) => {
+  const [zoomed, setZoomed] = useState(false);
+
   if (block.type === 'quote') {
     return (
       <blockquote className="rich-quote-block">
@@ -43,8 +71,18 @@ export const RichMediaBlock: React.FC<{ block: ContentBlock }> = ({ block }) => 
           loading="lazy"
           referrerPolicy="no-referrer"
           style={{ width: block.width || undefined }}
+          className="rich-media-zoomable"
+          onClick={() => setZoomed(true)}
+          title="Click to zoom"
         />
         {block.caption && <figcaption>{renderRichText(block.caption)}</figcaption>}
+        {zoomed && (
+          <ImageLightbox
+            src={source.toString()}
+            alt={block.alt || block.caption || 'Lesson illustration'}
+            onClose={() => setZoomed(false)}
+          />
+        )}
       </figure>
     );
   }
@@ -54,14 +92,17 @@ export const RichMediaBlock: React.FC<{ block: ContentBlock }> = ({ block }) => 
     return (
       <div className="rich-embed-block">
         {allowed ? (
-          <iframe
-            src={source.toString()}
-            title={block.title || block.label || 'Embedded lesson resource'}
-            loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="no-referrer"
-            style={{ aspectRatio: '16 / 9', height: 'auto', width: '100%', border: 'none', borderRadius: '12px' }}
-          />
+          <div className="rich-embed-frame">
+            <iframe
+              src={source.toString()}
+              title={block.title || block.label || 'Embedded lesson resource'}
+              loading="lazy"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+              allowFullScreen
+            />
+          </div>
         ) : (
           <a className="rich-attachment-card" href={source.toString()} target="_blank" rel="noopener noreferrer">
             <span><strong>{block.title || block.label || 'Open embedded resource'}</strong><small>{source.hostname}</small></span>

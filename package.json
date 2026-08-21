@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "prebuild": "npm run content:sync && npm run content:build",
     "lint": "oxlint",
+    "test": "vitest run",
     "preview": "vite preview",
     "content:migrate": "node --experimental-strip-types scripts/migrate-content.mjs",
     "content:sync": "node scripts/sync-content.mjs",
@@ -22,24 +23,25 @@
     "worker:check": "wrangler pages functions build functions --build-output-directory dist"
   },
   "dependencies": {
-    "@hugeicons/core-free-icons": "^4.2.3",
-    "@hugeicons/react": "^1.1.9",
     "canvas-confetti": "^1.9.4",
     "hugeicons-react": "^0.4.0",
     "katex": "^0.18.1",
-    "lucide-react": "^1.30.0",
+    "mermaid": "^11.17.0",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.18.2",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260809.1",
     "@types/canvas-confetti": "^1.9.0",
+    "@types/hast": "^3.0.5",
     "@types/katex": "^0.16.8",
     "@types/node": "^24.13.3",
     "@types/prismjs": "^1.26.6",
@@ -49,6 +51,7 @@
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
+    "vitest": "^4.1.11",
     "wrangler": "^4.120.0",
     "yaml": "^2.9.0"
   }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Suspense, lazy } from 'react';
 import { Copy01Icon, CheckmarkCircle02Icon } from 'hugeicons-react';
 import Prism from 'prismjs';
 import { useSettings } from '../../context/SettingsContext';
@@ -11,9 +11,63 @@ import 'prismjs/components/prism-c';
 import 'prismjs/components/prism-cpp';
 import 'prismjs/components/prism-sql';
 
+const MermaidDiagram = lazy(() =>
+  import('./MermaidDiagram').then((m) => ({ default: m.MermaidDiagram }))
+);
+
 interface CodeBlockProps {
   code: string;
   language?: string;
+}
+
+/**
+ * Splits Prism's highlighted HTML into lines while keeping multi-line tokens
+ * (docstrings, block comments, template literals) intact: any <span> still open
+ * at a newline is re-opened at the start of the next line and closed at its end.
+ */
+export function splitHighlightedLines(html: string): string[] {
+  const lines: string[] = [];
+  let current = '';
+  const openTags: string[] = [];
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === '\n') {
+      lines.push(current);
+      current = openTags.join('');
+      i += 1;
+      continue;
+    }
+    if (html.startsWith('<span', i)) {
+      const end = html.indexOf('>', i);
+      if (end === -1) {
+        current += html.slice(i);
+        break;
+      }
+      const tag = html.slice(i, end + 1);
+      openTags.push(tag);
+      current += tag;
+      i = end + 1;
+      continue;
+    }
+    if (html.startsWith('</span>', i)) {
+      openTags.pop();
+      current += '</span>';
+      i += '</span>'.length;
+      continue;
+    }
+    if (html[i] === '<') {
+      const end = html.indexOf('>', i);
+      if (end !== -1) {
+        current += html.slice(i, end + 1);
+        i = end + 1;
+        continue;
+      }
+    }
+    current += html[i];
+    i += 1;
+  }
+  lines.push(current);
+  return lines;
 }
 
 export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'python' }) => {
@@ -33,6 +87,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'python' 
       return code;
     }
   }, [code, cleanLang]);
+
+  const highlightLines = useMemo(
+    () => (cleanLang === 'mermaid' ? [] : splitHighlightedLines(highlightedHtml)),
+    [highlightedHtml, cleanLang]
+  );
 
   const handleCopy = async () => {
     try {
@@ -65,13 +124,21 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'python' 
           )}
         </button>
       </div>
-      <pre className={`code-block-body language-${cleanLang} ${settings.display.enableLineNumbers ? 'has-line-numbers' : ''}`}>
-        <code className={`language-${cleanLang}`}>
-          {highlightedHtml.split('\n').map((line, index) => (
-            <span className="code-line" key={`${index}-${line.slice(0, 12)}`} dangerouslySetInnerHTML={{ __html: line || ' ' }} />
-          ))}
-        </code>
-      </pre>
+      {cleanLang === 'mermaid' ? (
+        <div className="code-block-body code-mermaid-body">
+          <Suspense fallback={<div className="code-mermaid-loading">Rendering diagram…</div>}>
+            <MermaidDiagram definition={code} />
+          </Suspense>
+        </div>
+      ) : (
+        <pre className={`code-block-body language-${cleanLang} ${settings.display.enableLineNumbers ? 'has-line-numbers' : ''}`}>
+          <code className={`language-${cleanLang}`}>
+            {highlightLines.map((line, index) => (
+              <span className="code-line" key={index} dangerouslySetInnerHTML={{ __html: line || ' ' }} />
+            ))}
+          </code>
+        </pre>
+      )}
     </div>
   );
 };

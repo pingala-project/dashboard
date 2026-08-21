@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Add01Icon, Cancel01Icon, CheckmarkCircle02Icon, Delete02Icon, Edit02Icon, GithubIcon, StickyNote01Icon } from 'hugeicons-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -23,8 +23,90 @@ interface HighlightOverlay {
   height: number;
 }
 
+const MAX_SOURCE_CHARS = 1200;
+
+function getLessonRoot(): HTMLElement | null {
+  return document.querySelector('.lesson-blocks');
+}
+
+/** Converts a (node, offset) point into a document-order character offset within root. */
+function getTextOffset(root: Element, node: Node, offset: number): number | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let total = 0;
+  let current = walker.nextNode();
+  while (current) {
+    if (current === node) return total + offset;
+    total += current.nodeValue?.length ?? 0;
+    current = walker.nextNode();
+  }
+  return null;
+}
+
+/**
+ * Resolves a stored note back to a DOM Range. Prefers the exact document offsets
+ * captured at creation time (robust across repeated passages and multi-node
+ * selections); falls back to substring matching when content has shifted.
+ */
+function resolveNoteRange(root: HTMLElement, note: ReadingNote): Range | null {
+  if (
+    typeof note.selectionStart === 'number' &&
+    typeof note.selectionEnd === 'number' &&
+    note.selectionEnd > note.selectionStart
+  ) {
+    const range = document.createRange();
+    let startPoint: { node: Text; offset: number } | null = null;
+    let endPoint: { node: Text; offset: number } | null = null;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let total = 0;
+    let current = walker.nextNode() as Text | null;
+    while (current) {
+      const len = current.nodeValue?.length ?? 0;
+      if (!startPoint && note.selectionStart >= total && note.selectionStart <= total + len) {
+        startPoint = { node: current, offset: Math.min(note.selectionStart - total, len) };
+      }
+      if (note.selectionEnd >= total && note.selectionEnd <= total + len) {
+        endPoint = { node: current, offset: Math.min(note.selectionEnd - total, len) };
+        break;
+      }
+      total += len;
+      current = walker.nextNode() as Text | null;
+    }
+    if (startPoint && endPoint) {
+      try {
+        range.setStart(startPoint.node, startPoint.offset);
+        range.setEnd(endPoint.node, endPoint.offset);
+        return range;
+      } catch {
+        /* fall through to substring fallback */
+      }
+    }
+  }
+
+  // Fallback: first text node containing the passage verbatim.
+  const sourceText = note.sourceText.trim();
+  if (!sourceText) return null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    const value = node.nodeValue ?? '';
+    const index = value.indexOf(sourceText);
+    if (index >= 0) {
+      try {
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + sourceText.length);
+        return range;
+      } catch {
+        return null;
+      }
+    }
+    node = walker.nextNode() as Text | null;
+  }
+  return null;
+}
+
 function computeHighlightRects(notes: ReadingNote[]): HighlightOverlay[] {
-  const root = document.querySelector('.lesson-blocks') as HTMLElement;
+  const root = getLessonRoot();
   if (!root) return [];
 
   const overlays: HighlightOverlay[] = [];
@@ -32,24 +114,9 @@ function computeHighlightRects(notes: ReadingNote[]): HighlightOverlay[] {
 
   notes.forEach((note) => {
     if (note.style === 'plain') return;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node: Text | null = null;
-    while (walker.nextNode()) {
-      const candidate = walker.currentNode as Text;
-      if (candidate.nodeValue?.includes(note.sourceText)) {
-        node = candidate;
-        break;
-      }
-    }
-    if (!node || !node.nodeValue) return;
-    const start = node.nodeValue.indexOf(note.sourceText);
-    if (start < 0) return;
-    const range = document.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, start + note.sourceText.length);
-    
-    const rects = Array.from(range.getClientRects());
-    rects.forEach((rect, idx) => {
+    const range = resolveNoteRange(root, note);
+    if (!range) return;
+    Array.from(range.getClientRects()).forEach((rect, idx) => {
       overlays.push({
         id: `${note.id}-${idx}`,
         noteId: note.id,
@@ -58,12 +125,36 @@ function computeHighlightRects(notes: ReadingNote[]): HighlightOverlay[] {
         top: rect.top - rootRect.top,
         left: rect.left - rootRect.left,
         width: rect.width,
-        height: rect.height
+        height: rect.height,
       });
     });
   });
 
   return overlays;
+}
+
+function formatRelativeTime(isoTimestamp: string): string {
+  const timestamp = Date.parse(isoTimestamp);
+  if (Number.isNaN(timestamp)) return '';
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  const seconds = Math.round((timestamp - Date.now()) / 1000);
+  const divisions: Array<[number, Intl.RelativeTimeFormatUnit]> = [
+    [60, 'second'],
+    [60, 'minute'],
+    [24, 'hour'],
+    [7, 'day'],
+    [4.345, 'week'],
+    [12, 'month'],
+    [Number.POSITIVE_INFINITY, 'year'],
+  ];
+  let duration = seconds;
+  for (const [amount, unit] of divisions) {
+    if (Math.abs(duration) < amount) {
+      return formatter.format(Math.round(duration), unit);
+    }
+    duration /= amount;
+  }
+  return '';
 }
 
 import { createPortal } from 'react-dom';
@@ -91,33 +182,77 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
     return () => { active = false; };
   }, [refreshNotes, topicId, user]);
 
-  useEffect(() => {
-    // Recompute overlays whenever notes change or window resizes
-    const updateOverlays = () => setOverlays(computeHighlightRects(notes));
-    updateOverlays();
-    window.addEventListener('resize', updateOverlays);
-    return () => window.removeEventListener('resize', updateOverlays);
+  const updateOverlays = useCallback(() => {
+    setOverlays(computeHighlightRects(notes));
   }, [notes]);
+
+  useEffect(() => {
+    updateOverlays();
+    const root = getLessonRoot();
+
+    // Recompute on any layout change of the lesson body — not just window resize —
+    // so highlights survive font loading, image loading, and accordion toggles.
+    window.addEventListener('resize', updateOverlays);
+    let observer: ResizeObserver | null = null;
+    if (root && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(updateOverlays);
+      observer.observe(root);
+    }
+    void document.fonts?.ready.then(updateOverlays).catch(() => {});
+    const images = Array.from(root?.querySelectorAll('img') ?? []);
+    images.forEach((img) => img.addEventListener('load', updateOverlays));
+
+    return () => {
+      window.removeEventListener('resize', updateOverlays);
+      observer?.disconnect();
+      images.forEach((img) => img.removeEventListener('load', updateOverlays));
+    };
+  }, [updateOverlays]);
 
   useEffect(() => {
     const handleSelection = () => {
       const nativeSelection = window.getSelection();
-      const text = nativeSelection?.toString().trim() || '';
+      const rawText = nativeSelection?.toString() || '';
+      const trimmed = rawText.trim();
       const anchor = nativeSelection?.anchorNode;
+      const focusNode = nativeSelection?.focusNode;
       const lessonArticle = document.querySelector('.lesson-article');
-      if (!text || !anchor || !lessonArticle?.contains(anchor)) {
+      const lessonBlocks = getLessonRoot();
+      if (!trimmed || !anchor || !focusNode || !lessonArticle?.contains(anchor) || !lessonBlocks) {
         setSelection(null);
         return;
       }
       const range = nativeSelection?.getRangeAt(0);
-      if (!range) return;
+      if (!range || range.collapsed) {
+        setSelection(null);
+        return;
+      }
+
+      // Capture exact document-order offsets so the highlight can be restored
+      // precisely later, even for repeated or multi-node passages.
+      let startOffset = getTextOffset(lessonBlocks, range.startContainer, range.startOffset);
+      let endOffset = getTextOffset(lessonBlocks, range.endContainer, range.endOffset);
+      if (startOffset !== null && endOffset !== null && endOffset > startOffset) {
+        // Narrow to the trimmed passage so stored offsets match the stored text.
+        const leading = rawText.length - rawText.trimStart().length;
+        const trailing = rawText.length - rawText.trimEnd().length;
+        startOffset += leading;
+        endOffset -= trailing;
+        if (endOffset - startOffset > MAX_SOURCE_CHARS) {
+          endOffset = startOffset + MAX_SOURCE_CHARS;
+        }
+      } else {
+        startOffset = null;
+        endOffset = null;
+      }
+
       const rect = range.getBoundingClientRect();
       setSelection({
-        text: text.slice(0, 1200),
+        text: trimmed.slice(0, MAX_SOURCE_CHARS),
         top: Math.max(12, rect.top - 52),
         left: Math.min(Math.max(12, rect.left), window.innerWidth - 235),
-        start: Number.isInteger(range.startOffset) ? range.startOffset : null,
-        end: Number.isInteger(range.endOffset) ? range.endOffset : null,
+        start: startOffset,
+        end: endOffset,
       });
     };
     document.addEventListener('mouseup', handleSelection);
@@ -183,10 +318,11 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
     showToast('Note removed', 'The reading note was deleted from your account.', 'success');
   };
 
+  const portalTarget = getLessonRoot();
+
   return (
     <div className="reading-notes-shell">
-      {overlays.length > 0 &&
-        document.querySelector('.lesson-blocks') &&
+      {overlays.length > 0 && portalTarget &&
         createPortal(
           overlays.map(overlay => (
             <div
@@ -202,7 +338,7 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
               } as React.CSSProperties}
             />
           )),
-          document.querySelector('.lesson-blocks') as HTMLElement
+          portalTarget
         )}
 
       {selection && !isOpen && (
@@ -262,6 +398,13 @@ export const ReadingNotes: React.FC<{ topicId: string }> = ({ topicId }) => {
               </div>
               <div className={`reading-note-source note-style-${note.style}`}>{note.sourceText}</div>
               {note.noteText && <p>{note.noteText}</p>}
+              <time
+                className="reading-note-timestamp"
+                dateTime={note.updatedAt ?? note.createdAt}
+                title={new Date(note.updatedAt ?? note.createdAt).toLocaleString()}
+              >
+                {formatRelativeTime(note.updatedAt ?? note.createdAt)}
+              </time>
             </article>
           ))}
         </div>

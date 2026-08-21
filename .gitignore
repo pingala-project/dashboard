@@ -28,3 +28,5 @@ _worker.bundle
 *.njsproj
 *.sln
 *.sw?
+
+.linkcheck-cache.json

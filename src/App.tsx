@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { COURSES_DATA } from './data/coursesData';
-import type { ActiveView, Course, Topic } from './types/curriculum';
+import type { Course, Topic } from './types/curriculum';
 import { SettingsProvider } from './context/SettingsContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TopBar } from './components/layout/TopBar';
@@ -8,10 +9,18 @@ import { CourseGrid } from './components/courses/CourseGrid';
 import { CourseDetail } from './components/courses/CourseDetail';
 import { LessonViewer } from './components/lesson/LessonViewer';
 import { NestedCourseSidebar } from './components/layout/NestedCourseSidebar';
-import { SearchModal } from './components/common/SearchModal';
-import { SettingsPage } from './components/profile/SettingsPage';
+import { NotFoundPage } from './components/common/NotFoundPage';
 import { Bookmark02Icon } from 'hugeicons-react';
 import { ToastProvider, useToast } from './context/ToastContext';
+import { ScrollToTop, usePageTitle } from './utils/pageMeta';
+import { coursePath, homePath, savedPath, settingsPath, topicPath } from './utils/paths';
+
+const SearchModal = lazy(() =>
+  import('./components/common/SearchModal').then((m) => ({ default: m.SearchModal }))
+);
+const SettingsPage = lazy(() =>
+  import('./components/profile/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
 
 const COMPLETED_STORAGE_KEY = 'pingala_completed_topics';
 const BOOKMARKS_STORAGE_KEY = 'pingala_bookmarked_topics';
@@ -69,11 +78,186 @@ function readLegacyIds(key: string) {
   }
 }
 
+function findTopic(courseId: string | undefined, topicId: string | undefined): { course?: Course; topic?: Topic } {
+  if (!courseId || !topicId) return {};
+  const course = COURSES_DATA.find((c) => c.id === courseId);
+  if (!course) return {};
+  for (const m of course.modules) {
+    const found = m.topics.find((t) => t.id === topicId);
+    if (found) return { course, topic: found };
+  }
+  return { course };
+}
+
+function findCourseIdForTopic(topicId: string): string | undefined {
+  for (const c of COURSES_DATA) {
+    if (c.modules.some((m) => m.topics.some((t) => t.id === topicId))) return c.id;
+  }
+  return undefined;
+}
+
+const HomePage: React.FC<{ completedTopicIds: Set<string>; onSelectCourse: (courseId: string) => void }> = ({
+  completedTopicIds,
+  onSelectCourse,
+}) => {
+  usePageTitle();
+  return (
+    <div className="mobbin-catalog-container">
+      <CourseGrid courses={COURSES_DATA} completedTopicIds={completedTopicIds} onSelectCourse={onSelectCourse} />
+    </div>
+  );
+};
+
+const CoursePage: React.FC<{
+  completedTopicIds: Set<string>;
+  onToggleComplete: (topicId: string) => void;
+  onSelectTopic: (courseId: string, topicId: string) => void;
+  onBackToAll: () => void;
+}> = ({ completedTopicIds, onToggleComplete, onSelectTopic, onBackToAll }) => {
+  const { courseId } = useParams<{ courseId: string }>();
+  const course = COURSES_DATA.find((c) => c.id === courseId);
+  usePageTitle(course ? course.title : 'Course not found');
+
+  if (!course) {
+    return <NotFoundPage onNavigateHome={onBackToAll} />;
+  }
+
+  return (
+    <div className="course-workspace-layout">
+      <NestedCourseSidebar
+        course={course}
+        completedTopicIds={completedTopicIds}
+        onSelectTopic={(topicId) => onSelectTopic(course.id, topicId)}
+      />
+      <div className="course-workspace-main">
+        <CourseDetail
+          course={course}
+          completedTopicIds={completedTopicIds}
+          onSelectTopic={(topicId) => onSelectTopic(course.id, topicId)}
+          onBackToAll={onBackToAll}
+          onToggleCompleteTopic={(topicId, e) => {
+            e.stopPropagation();
+            onToggleComplete(topicId);
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const TopicPage: React.FC<{
+  completedTopicIds: Set<string>;
+  bookmarkedTopicIds: Set<string>;
+  onToggleComplete: (topicId: string) => void;
+  onToggleBookmark: (topicId: string) => void;
+  onSelectTopic: (courseId: string, topicId: string) => void;
+  onBackToAll: () => void;
+}> = ({ completedTopicIds, bookmarkedTopicIds, onToggleComplete, onToggleBookmark, onSelectTopic, onBackToAll }) => {
+  const navigate = useNavigate();
+  const { courseId, topicId } = useParams<{ courseId: string; topicId: string }>();
+  const { course, topic } = findTopic(courseId, topicId);
+  usePageTitle(topic && course ? `${topic.title} · ${course.title}` : 'Lesson not found');
+
+  if (!course || !topic) {
+    return <NotFoundPage onNavigateHome={onBackToAll} />;
+  }
+
+  return (
+    <div className="course-workspace-layout">
+      <NestedCourseSidebar
+        course={course}
+        activeTopicId={topic.id}
+        completedTopicIds={completedTopicIds}
+        onSelectTopic={(id) => onSelectTopic(course.id, id)}
+      />
+      <div className="course-workspace-main">
+        <LessonViewer
+          topic={topic}
+          course={course}
+          isCompleted={completedTopicIds.has(topic.id)}
+          isBookmarked={bookmarkedTopicIds.has(topic.id)}
+          onToggleComplete={() => onToggleComplete(topic.id)}
+          onToggleBookmark={() => onToggleBookmark(topic.id)}
+          onNavigateTopic={(nextId) => onSelectTopic(course.id, nextId)}
+          onBackToCourse={() => navigate(coursePath(course.id))}
+          onBackToAll={onBackToAll}
+        />
+      </div>
+    </div>
+  );
+};
+
+const SavedPage: React.FC<{
+  bookmarkedTopicIds: Set<string>;
+  onSelectTopic: (courseId: string, topicId: string) => void;
+  onBackToAll: () => void;
+}> = ({ bookmarkedTopicIds, onSelectTopic, onBackToAll }) => {
+  usePageTitle('Saved Lessons');
+  const allTopics = COURSES_DATA.flatMap((c) =>
+    c.modules.flatMap((m) => m.topics.map((t) => ({ ...t, courseTitle: c.title, courseId: c.id })))
+  );
+  const bookmarkedList = allTopics.filter((t) => bookmarkedTopicIds.has(t.id));
+
+  return (
+    <div className="mobbin-courses-section">
+      <div className="saved-header-editorial">
+        <h1 className="saved-title">Saved Lessons</h1>
+      </div>
+
+      {bookmarkedList.length > 0 ? (
+        <div className="mobbin-courses-grid">
+          {bookmarkedList.map((item) => (
+            <div
+              key={item.id}
+              className="course-card"
+              onClick={() => onSelectTopic(item.courseId, item.id)}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="card-track-label" style={{ color: '#6366f1' }}>
+                {item.courseTitle}
+              </div>
+
+              <div className="card-header-row">
+                <Bookmark02Icon size={20} color="#F59F00" className="card-header-icon" />
+                <h3 className="card-title">{item.title}</h3>
+              </div>
+
+              <p className="card-description">{item.summary}</p>
+
+              <div className="card-footer">
+                <div className="card-meta-pills">
+                  <span className="card-meta-pill">{item.difficulty}</span>
+                  <span className="card-meta-dot">·</span>
+                  <span className="card-meta-pill">{item.readingTime}</span>
+                  <span className="card-meta-dot">·</span>
+                  <span className="card-meta-pill">{item.moduleTitle}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="saved-empty-state-editorial">
+          <Bookmark02Icon size={32} color="var(--text-muted)" />
+          <h3 className="saved-empty-title">No saved lessons yet</h3>
+          <p className="saved-empty-desc">
+            Bookmark lessons while exploring courses to build your personal learning library.
+          </p>
+          <button className="saved-empty-explore-btn" onClick={onBackToAll}>
+            Explore courses
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AppContent: React.FC = () => {
   const { user, isLoading: isAuthLoading, login, refreshProgress, syncProgress, refreshNotes, createNote } = useAuth();
   const { showToast } = useToast();
-  const [history, setHistory] = useState<ActiveView[]>([{ type: 'all_courses' }]);
-  const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState<boolean>(false);
 
@@ -155,16 +339,6 @@ const AppContent: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const activeView = history[historyIndex] || { type: 'all_courses' };
-
-  const navigateTo = (newView: ActiveView) => {
-    const nextHistory = history.slice(0, historyIndex + 1);
-    nextHistory.push(newView);
-    setHistory(nextHistory);
-    setHistoryIndex(nextHistory.length - 1);
-    setIsProfileDropdownOpen(false);
-  };
 
   const handleToggleComplete = (topicId: string) => {
     if (!user) {
@@ -271,170 +445,12 @@ const AppContent: React.FC = () => {
   // Total topics calculation
   const allCurriculumTopics = COURSES_DATA.flatMap((c) => c.modules.flatMap((m) => m.topics));
 
-  // Find active course & topic
-  let currentCourse: Course | undefined;
-  let currentTopic: Topic | undefined;
-
-  if (activeView.type === 'course') {
-    currentCourse = COURSES_DATA.find((c) => c.id === activeView.courseId);
-  } else if (activeView.type === 'topic') {
-    currentCourse = COURSES_DATA.find((c) => c.id === activeView.courseId);
-    if (currentCourse) {
-      for (const m of currentCourse.modules) {
-        const found = m.topics.find((t) => t.id === activeView.topicId);
-        if (found) {
-          currentTopic = found;
-          break;
-        }
-      }
-    }
-  }
-
-  // Render main view content
-  const renderMainContent = () => {
-    switch (activeView.type) {
-      case 'all_courses':
-        return (
-          <div className="mobbin-catalog-container">
-            <CourseGrid
-              courses={COURSES_DATA}
-              completedTopicIds={completedTopicIds}
-              onSelectCourse={(courseId) => navigateTo({ type: 'course', courseId })}
-            />
-          </div>
-        );
-
-      case 'course':
-      case 'topic': {
-        if (!currentCourse) return <div className="state-not-found">Course not found</div>;
-
-        return (
-          <div className="course-workspace-layout">
-            <NestedCourseSidebar
-              course={currentCourse}
-              activeTopicId={activeView.type === 'topic' ? activeView.topicId : undefined}
-              completedTopicIds={completedTopicIds}
-              onSelectTopic={(topicId) => 
-                navigateTo({ type: 'topic', courseId: currentCourse!.id, topicId })
-              }
-            />
-
-            <div className="course-workspace-main">
-              {activeView.type === 'course' ? (
-                <CourseDetail
-                  course={currentCourse}
-                  completedTopicIds={completedTopicIds}
-                  onSelectTopic={(topicId) => 
-                    navigateTo({ type: 'topic', courseId: currentCourse!.id, topicId })
-                  }
-                  onBackToAll={() => navigateTo({ type: 'all_courses' })}
-                  onToggleCompleteTopic={(topicId, e) => {
-                    e.stopPropagation();
-                    handleToggleComplete(topicId);
-                  }}
-                />
-              ) : (
-                currentTopic && (
-                  <LessonViewer
-                    topic={currentTopic}
-                    course={currentCourse}
-                    isCompleted={completedTopicIds.has(currentTopic.id)}
-                    isBookmarked={bookmarkedTopicIds.has(currentTopic.id)}
-                    onToggleComplete={() => handleToggleComplete(currentTopic!.id)}
-                    onToggleBookmark={() => handleToggleBookmark(currentTopic!.id)}
-                    onNavigateTopic={(topicId) => 
-                      navigateTo({ type: 'topic', courseId: currentCourse!.id, topicId })
-                    }
-                    onBackToCourse={() => navigateTo({ type: 'course', courseId: currentCourse!.id })}
-                    onBackToAll={() => navigateTo({ type: 'all_courses' })}
-                  />
-                )
-              )}
-            </div>
-          </div>
-        );
-      }
-
-      case 'bookmarks': {
-        const allTopics = COURSES_DATA.flatMap((c) =>
-          c.modules.flatMap((m) => m.topics.map((t) => ({ ...t, courseTitle: c.title, courseId: c.id })))
-        );
-        const bookmarkedList = allTopics.filter((t) => bookmarkedTopicIds.has(t.id));
-
-        return (
-          <div className="mobbin-courses-section">
-            <div className="saved-header-editorial">
-              <h1 className="saved-title">Saved Lessons</h1>
-            </div>
-
-            {bookmarkedList.length > 0 ? (
-              <div className="mobbin-courses-grid">
-                {bookmarkedList.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="course-card"
-                    onClick={() => navigateTo({ type: 'topic', courseId: item.courseId, topicId: item.id })}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="card-track-label" style={{ color: '#6366f1' }}>
-                      {item.courseTitle}
-                    </div>
-
-                    <div className="card-header-row">
-                      <Bookmark02Icon size={20} color="#F59F00" className="card-header-icon" />
-                      <h3 className="card-title">{item.title}</h3>
-                    </div>
-
-                    <p className="card-description">{item.summary}</p>
-
-                    <div className="card-footer">
-                      <div className="card-meta-pills">
-                        <span className="card-meta-pill">{item.difficulty}</span>
-                        <span className="card-meta-dot">·</span>
-                        <span className="card-meta-pill">{item.readingTime}</span>
-                        <span className="card-meta-dot">·</span>
-                        <span className="card-meta-pill">{item.moduleTitle}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="saved-empty-state-editorial">
-                <Bookmark02Icon size={32} color="var(--text-muted)" />
-                <h3 className="saved-empty-title">No saved lessons yet</h3>
-                <p className="saved-empty-desc">
-                  Bookmark lessons while exploring courses to build your personal learning library.
-                </p>
-                <button 
-                  className="saved-empty-explore-btn"
-                  onClick={() => navigateTo({ type: 'all_courses' })}
-                >
-                  Explore courses
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      case 'settings':
-        return (
-          <SettingsPage
-            completedTopicsCount={completedTopicIds.size}
-            bookmarkedTopicsCount={bookmarkedTopicIds.size}
-            totalTopicsCount={allCurriculumTopics.length}
-            onResetProgress={handleResetProgress}
-            onExportData={handleExportData}
-            onImportData={handleImportData}
-            onBack={() => navigateTo({ type: 'all_courses' })}
-          />
-        );
-
-      default:
-        return null;
-    }
+  const goHome = () => navigate(homePath);
+  const selectCourse = (courseId: string) => navigate(coursePath(courseId));
+  const selectTopic = (courseId: string, topicId: string) => {
+    // Resolve the topic's actual course so cross-course prev/next navigation gets correct URLs
+    const resolvedCourseId = findCourseIdForTopic(topicId) ?? courseId;
+    navigate(topicPath(resolvedCourseId, topicId));
   };
 
   const handleNavigateTab = (tab: 'all_courses' | 'bookmarks') => {
@@ -443,40 +459,96 @@ const AppContent: React.FC = () => {
       login();
       return;
     }
-    navigateTo({ type: tab });
+    setIsProfileDropdownOpen(false);
+    if (tab === 'all_courses') goHome();
+    else navigate(savedPath);
   };
+
+  const activeSection =
+    location.pathname === savedPath
+      ? 'saved'
+      : location.pathname.startsWith(settingsPath)
+        ? 'settings'
+        : 'courses';
 
   return (
     <div className="mobbin-app-layout">
       {/* Mobbin Top Bar */}
       <TopBar
-        activeViewType={activeView.type}
+        activeSection={activeSection}
         onNavigateTab={handleNavigateTab}
         onOpenSearch={() => setIsSearchOpen(true)}
         onToggleProfileDropdown={() => setIsProfileDropdownOpen((prev) => !prev)}
         isProfileDropdownOpen={isProfileDropdownOpen}
         onCloseProfileDropdown={() => setIsProfileDropdownOpen(false)}
-        onOpenSettings={() => navigateTo({ type: 'settings' })}
+        onOpenSettings={() => navigate(settingsPath)}
         bookmarkedCount={bookmarkedTopicIds.size}
       />
 
       {/* Main Full-Width Content Body */}
       <main className="mobbin-main-body">
-        {renderMainContent()}
+        <Routes>
+          <Route path="/" element={<HomePage completedTopicIds={completedTopicIds} onSelectCourse={selectCourse} />} />
+          <Route
+            path="/saved"
+            element={
+              <SavedPage bookmarkedTopicIds={bookmarkedTopicIds} onSelectTopic={selectTopic} onBackToAll={goHome} />
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <Suspense fallback={null}>
+                <SettingsPage
+                  completedTopicsCount={completedTopicIds.size}
+                  bookmarkedTopicsCount={bookmarkedTopicIds.size}
+                  totalTopicsCount={allCurriculumTopics.length}
+                  onResetProgress={handleResetProgress}
+                  onExportData={handleExportData}
+                  onImportData={handleImportData}
+                  onBack={goHome}
+                />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/courses/:courseId"
+            element={
+              <CoursePage
+                completedTopicIds={completedTopicIds}
+                onToggleComplete={handleToggleComplete}
+                onSelectTopic={selectTopic}
+                onBackToAll={goHome}
+              />
+            }
+          />
+          <Route
+            path="/courses/:courseId/topics/:topicId"
+            element={
+              <TopicPage
+                completedTopicIds={completedTopicIds}
+                bookmarkedTopicIds={bookmarkedTopicIds}
+                onToggleComplete={handleToggleComplete}
+                onToggleBookmark={handleToggleBookmark}
+                onSelectTopic={selectTopic}
+                onBackToAll={goHome}
+              />
+            }
+          />
+          <Route path="*" element={<NotFoundPage onNavigateHome={goHome} />} />
+        </Routes>
       </main>
 
       {/* Quick Search Modal (Cmd+K) */}
-      <SearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        courses={COURSES_DATA}
-        onSelectTopic={(courseId, topicId) => {
-          navigateTo({ type: 'topic', courseId, topicId });
-        }}
-        onSelectCourse={(courseId) => {
-          navigateTo({ type: 'course', courseId });
-        }}
-      />
+      <Suspense fallback={null}>
+        <SearchModal
+          isOpen={isSearchOpen}
+          onClose={() => setIsSearchOpen(false)}
+          courses={COURSES_DATA}
+          onSelectTopic={selectTopic}
+          onSelectCourse={selectCourse}
+        />
+      </Suspense>
 
     </div>
   );
@@ -487,7 +559,10 @@ export const App: React.FC = () => {
     <AuthProvider>
       <SettingsProvider>
         <ToastProvider>
-          <AppContent />
+          <BrowserRouter>
+            <ScrollToTop />
+            <AppContent />
+          </BrowserRouter>
         </ToastProvider>
       </SettingsProvider>
     </AuthProvider>

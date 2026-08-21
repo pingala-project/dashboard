@@ -1,13 +1,15 @@
 import React, { useRef } from 'react';
-import { 
-  Search01Icon, 
-  UserIcon, 
+import {
+  Search01Icon,
+  UserIcon,
 } from 'hugeicons-react';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileDropdown } from '../profile/ProfileDropdown';
 
+export type TopBarSection = 'courses' | 'saved' | 'settings';
+
 interface TopBarProps {
-  activeViewType: string;
+  activeSection: TopBarSection;
   onNavigateTab: (tab: 'all_courses' | 'bookmarks') => void;
   onOpenSearch: () => void;
   onToggleProfileDropdown: () => void;
@@ -18,7 +20,7 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
-  activeViewType,
+  activeSection,
   onNavigateTab,
   onOpenSearch,
   onToggleProfileDropdown,
@@ -38,7 +40,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="mobbin-topbar-inner">
         {/* Left: Brand Logo + Courses & Saved Text Links */}
         <div className="topbar-left-mobbin">
-          <div 
+          <div
             className="topbar-brand-link"
             onClick={() => onNavigateTab('all_courses')}
             title="The Pingala Project"
@@ -50,16 +52,16 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="topbar-brand-title">Pingala</span>
           </div>
 
-          {activeViewType !== 'settings' && (
+          {activeSection !== 'settings' && (
             <nav className="topbar-nav-tabs">
-              <button 
-                className={`topbar-nav-btn ${activeViewType === 'all_courses' || activeViewType === 'course' || activeViewType === 'topic' ? 'active' : ''}`}
+              <button
+                className={`topbar-nav-btn ${activeSection === 'courses' ? 'active' : ''}`}
                 onClick={() => onNavigateTab('all_courses')}
               >
                 Courses
               </button>
-              <button 
-                className={`topbar-nav-btn ${activeViewType === 'bookmarks' ? 'active' : ''}`}
+              <button
+                className={`topbar-nav-btn ${activeSection === 'saved' ? 'active' : ''}`}
                 onClick={() => onNavigateTab('bookmarks')}
               >
                 <span>Saved</span>
@@ -72,9 +74,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         {/* Center: Wide Search Bar (Dead-center aligned) */}
-        {activeViewType !== 'settings' ? (
+        {activeSection !== 'settings' ? (
           <div className="topbar-center-mobbin">
-            <button 
+            <button
               className="mobbin-search-bar-btn"
               onClick={onOpenSearch}
               title="Search on Pingala..."
@@ -92,7 +94,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Right: Single Profile Avatar + Popover Anchor */}
         <div className="topbar-right-mobbin">
           <div className="topbar-profile-container">
-            <button 
+            <button
               ref={avatarBtnRef}
               className={`topbar-avatar-btn ${isProfileDropdownOpen ? 'active' : ''}`}
               onClick={onToggleProfileDropdown}
