@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CheckpointQuestion } from '../../types/curriculum';
-import { CheckmarkCircle02Icon, Cancel01Icon, HelpCircleIcon } from 'hugeicons-react';
+import { CheckmarkCircle02Icon, Cancel01Icon } from 'hugeicons-react';
 import { renderRichText } from '../../utils/formatContent';
 import { useSettings } from '../../context/SettingsContext';
 
@@ -23,29 +23,22 @@ export const Checkpoint: React.FC<CheckpointProps> = ({ checkpoints }) => {
   };
 
   return (
-    <div className="editorial-checkpoint-section">
-      <div className="checkpoint-section-header">
-        <div className="checkpoint-header-left">
-          <HelpCircleIcon size={18} color="#0F172A" />
-          <h3 className="checkpoint-main-title">Concept Verification</h3>
-        </div>
-        <span className="checkpoint-badge">Self-Assessment</span>
-      </div>
+    <div className="checkpoint-section">
+      <span className="lesson-section-label">Check yourself</span>
 
-      <div className="checkpoint-cards-list">
-        {checkpoints.map((chk, qIdx) => {
+      <div className="checkpoint-list">
+        {checkpoints.map((chk) => {
           const selectedIdx = selectedAnswers[chk.id];
           const isAnswered = selectedIdx !== undefined;
           const isCorrect = isAnswered && selectedIdx === chk.correctIndex;
 
           return (
-            <div key={chk.id} className="editorial-checkpoint-card">
-              <div className="checkpoint-question-title">
-                <span className="question-num">{qIdx + 1}.</span>
+            <div key={chk.id} className="checkpoint-item">
+              <div className="checkpoint-question">
                 <span>{renderRichText(chk.question)}</span>
               </div>
 
-              <div className="checkpoint-options-grid">
+              <div className="checkpoint-options">
                 {chk.options.map((opt, optIdx) => {
                   let optionState = '';
                   if (isAnswered) {
@@ -62,19 +55,17 @@ export const Checkpoint: React.FC<CheckpointProps> = ({ checkpoints }) => {
                     <button
                       key={optIdx}
                       disabled={isAnswered}
-                      className={`checkpoint-option-item ${optionState}`}
+                      className={`checkpoint-option ${optionState}`}
                       onClick={() => handleSelectOption(chk.id, optIdx)}
                     >
-                      <span className="option-letter-tag">
-                        {String.fromCharCode(65 + optIdx)}
-                      </span>
+                      <span className="option-letter">{String.fromCharCode(65 + optIdx)}</span>
                       <span className="option-text">{renderRichText(opt)}</span>
-                      
+
                       {isAnswered && optIdx === chk.correctIndex && (
-                        <CheckmarkCircle02Icon size={16} color="#16A34A" style={{ marginLeft: 'auto', flexShrink: 0 }} />
+                        <CheckmarkCircle02Icon size={15} color="#16A34A" style={{ marginLeft: 'auto', flexShrink: 0 }} />
                       )}
                       {isAnswered && optIdx === selectedIdx && optIdx !== chk.correctIndex && (
-                        <Cancel01Icon size={16} color="#DC2626" style={{ marginLeft: 'auto', flexShrink: 0 }} />
+                        <Cancel01Icon size={15} color="#DC2626" style={{ marginLeft: 'auto', flexShrink: 0 }} />
                       )}
                     </button>
                   );
@@ -82,21 +73,9 @@ export const Checkpoint: React.FC<CheckpointProps> = ({ checkpoints }) => {
               </div>
 
               {isAnswered && settings.learning.instantQuizFeedback && (
-                <div className={`checkpoint-feedback-box ${isCorrect ? 'correct' : 'incorrect'}`}>
-                  <div className="feedback-status-line">
-                    {isCorrect ? (
-                      <>
-                        <CheckmarkCircle02Icon size={16} color="#16A34A" />
-                        <span style={{ fontWeight: 600, color: '#166534' }}>Correct Analysis</span>
-                      </>
-                    ) : (
-                      <>
-                        <Cancel01Icon size={16} color="#DC2626" />
-                        <span style={{ fontWeight: 600, color: '#991B1B' }}>Incorrect Selection</span>
-                      </>
-                    )}
-                  </div>
-                  <p className="feedback-explanation-text">{renderRichText(chk.explanation)}</p>
+                <div className={`checkpoint-explanation ${isCorrect ? 'correct' : 'incorrect'}`}>
+                  <span className="explanation-verdict">{isCorrect ? 'Correct.' : 'Not quite.'}</span>
+                  {renderRichText(chk.explanation)}
                 </div>
               )}
             </div>
@@ -106,3 +85,4 @@ export const Checkpoint: React.FC<CheckpointProps> = ({ checkpoints }) => {
     </div>
   );
 };
+

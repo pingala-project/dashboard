@@ -1,0 +1,64 @@
+name: Content review gate
+
+# Machine-enforces CONTRIBUTING.md policy: new lessons need two approvals.
+# CODEOWNERS guarantees at least one curriculum-reviewer approval; this check
+# additionally requires a second distinct approving reviewer whenever a PR adds
+# a brand-new lesson topic.
+
+on:
+  pull_request:
+    paths:
+      - 'content/courses/**/topics/**'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate:
+    name: New lesson approvals
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Evaluate approvals for new lessons
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 300,
+            });
+            const newTopics = files.filter(
+              (file) => file.status === 'added' && /content\/courses\/[^/]+\/modules\/[^/]+\/topics\/[^/]+\/metadata\.yml$/.test(file.filename)
+            );
+            if (newTopics.length === 0) {
+              core.info('No new lesson topics added — one maintainer approval suffices.');
+              return;
+            }
+            core.info(`New topics detected (${newTopics.length}); requiring two distinct approvals.`);
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 200,
+            });
+            // Latest review state per reviewer.
+            const latest = new Map();
+            for (const review of reviews) {
+              if (review.user.type === 'Bot') continue;
+              latest.set(review.user.login, review.state);
+            }
+            const approvers = [...latest.entries()].filter(([, state]) => state === 'APPROVED').map(([login]) => login);
+            core.info(`Approving reviewers: ${approvers.join(', ') || '(none)'}`);
+            const author = context.payload.pull_request.user.login;
+            const externalApprovals = approvers.filter((login) => login !== author);
+            if (externalApprovals.length < 2) {
+              core.setFailed(
+                `New lessons require TWO distinct approvals (found ${externalApprovals.length}). ` +
+                'Ask a second maintainer or curriculum reviewer to review this PR.'
+              );
+            }

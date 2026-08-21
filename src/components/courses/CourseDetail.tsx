@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import type { Course } from '../../types/curriculum';
 import { CourseIcon } from './CourseIcon';
-import { Clock01Icon, CheckmarkCircle02Icon } from 'hugeicons-react';
 import { CurriculumList } from './CurriculumList';
+import { Link01Icon } from 'hugeicons-react';
+import { useToast } from '../../context/ToastContext';
 
 interface CourseDetailProps {
   course: Course;
@@ -19,9 +20,8 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
 }) => {
   const [isSaved, setIsSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<'lessons' | 'overview'>('lessons');
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const { showToast } = useToast();
   const allTopics = course.modules.flatMap(m => m.topics);
-  const completedCount = allTopics.filter(t => completedTopicIds.has(t.id)).length;
   const firstTopic = allTopics[0];
 
   const activeContributor = course.contributor || { name: 'Pingala Contributors', github: 'pingala-project' };
@@ -37,32 +37,34 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         <h1 className="course-detail-title">{course.title}</h1>
         <p className="course-detail-tagline">{course.tagline}</p>
 
-        {/* Meta row: hours + progress */}
-        <div className="course-detail-meta-row">
-          <span className="course-meta-item">
-            <Clock01Icon size={14} />
-            {course.estimatedHours}
-          </span>
-          <span className="course-meta-dot">·</span>
-          <span className="course-meta-item">
-            {course.modules.length} modules
-          </span>
-          <span className="course-meta-dot">·</span>
-          <span className="course-meta-item">
-            {allTopics.length} lessons
-          </span>
-          {completedCount > 0 && (
-            <>
-              <span className="course-meta-dot">·</span>
-              <span className="course-meta-item course-meta-progress">
-                <CheckmarkCircle02Icon size={14} color="#22c55e" />
-                {completedCount}/{allTopics.length} done
-              </span>
-            </>
-          )}
+        {/* Meta Info Grid */}
+        <div className="course-detail-meta-grid">
+          <div className="meta-grid-column">
+            <span className="meta-grid-label">Time</span>
+            <span className="meta-grid-value">{course.estimatedHours}</span>
+          </div>
+          <div className="meta-grid-column">
+            <span className="meta-grid-label">Modules</span>
+            <span className="meta-grid-value">{course.modules.length}</span>
+          </div>
+          <div className="meta-grid-column">
+            <span className="meta-grid-label">Lessons</span>
+            <span className="meta-grid-value">{allTopics.length}</span>
+          </div>
+          <div className="meta-grid-column">
+            <span className="meta-grid-label">Contributor</span>
+            <a 
+              href={`https://github.com/${activeContributor.github}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="meta-grid-value contributor-link"
+            >
+              @{activeContributor.github}
+            </a>
+          </div>
         </div>
 
-        {/* Actions + Contributor single line */}
+        {/* Actions single line */}
         <div className="mobbin-app-actions-row single-line-actions">
           <div className="actions-left-group">
             <button
@@ -84,32 +86,15 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
             <div className="mobbin-more-wrapper">
               <button
                 className="mobbin-action-pill-btn more"
-                onClick={() => setShowMoreMenu(v => !v)}
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  showToast('Link copied', 'Course link copied to clipboard.', 'success');
+                }}
               >
-                ···
+                <Link01Icon size={16} />
               </button>
-              {showMoreMenu && (
-                <div className="mobbin-more-popover">
-                  <div
-                    className="mobbin-popover-item"
-                    onClick={() => { navigator.clipboard.writeText(window.location.href); setShowMoreMenu(false); }}
-                  >
-                    Copy link
-                  </div>
-                </div>
-              )}
             </div>
           </div>
-
-          <a
-            href={`https://github.com/${activeContributor.github}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mobbin-contributor-link"
-          >
-            <span className="contributor-label-text">Contributor</span>
-            <span className="contributor-github-badge">@{activeContributor.github}</span>
-          </a>
         </div>
 
         {/* Tab bar */}

@@ -1,0 +1,100 @@
+name: Deploy PR preview
+
+# Runs in the base repository (with secrets) after "PR build" completes.
+# Fork pull requests never see credentials: this workflow only downloads the
+# artifact built by the unprivileged run and publishes it as a Pages preview.
+
+on:
+  workflow_run:
+    workflows: [PR build]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Download PR artifact
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const workflows = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pr-build.yml',
+              event: 'pull_request',
+              per_page: 20,
+            });
+            const run = workflows.data.workflow_runs.find((r) => r.id === context.payload.workflow_run.id);
+            if (!run) { core.setFailed('Matching PR build run not found'); return; }
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+            });
+            const artifact = artifacts.data.artifacts[0];
+            if (!artifact) { core.setFailed('No artifact from PR build'); return; }
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+              archive_format: 'zip',
+            });
+            const fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/preview.zip`, Buffer.from(download.data));
+            const prNumber = run.pull_requests[0]?.number;
+            if (prNumber) fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/pr-number.txt`, String(prNumber));
+
+      - name: Extract bundle
+        run: |
+          mkdir preview && unzip -q preview.zip -d preview
+          echo "PR_NUMBER=$(cat preview/pr-number.txt)" >> "$GITHUB_ENV"
+
+      - name: Verify Cloudflare credentials
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is not configured; skipping preview deploy"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured; skipping preview deploy"; exit 1; }
+
+      - name: Deploy preview to Cloudflare Pages
+        # cloudflare/wrangler-action v4.0.0
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy preview/dist --project-name=pingala-dashboard --branch=preview-pr-${{ env.PR_NUMBER }}
+
+      - name: Comment preview URL
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!prNumber) { core.info('No PR number; skipping comment.'); return; }
+            const body = `🔍 **Preview deployed:** https://preview-pr-${prNumber}.pingala-dashboard.pages.dev\n\nThis preview is built from this PR's head commit and will be replaced on every push.`;
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.data.find((c) => c.user.type === 'Bot' && c.body.includes('Preview deployed'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }

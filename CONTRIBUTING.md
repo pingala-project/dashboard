@@ -130,6 +130,16 @@ Explain why the learning rate changes the size of the update.
 Use `metadata.yml` for sources and stable IDs, and put answer explanations in
 `checkpoints.yml`. A checkpoint is a learning aid, not a trick question.
 
+Checkpoints can be defined in two places, and both are validated the same way:
+
+- `checkpoints.yml` — a list of `{ id, question, options, correctIndex, explanation }`
+  entries (preferred for longer quizzes);
+- inline `:::checkpoint` directives inside `content.md` — good for one or two questions
+  placed exactly where they belong in the flow. Inline checkpoints get a stable ID derived
+  from the question text automatically, so you do not need to assign one.
+
+IDs must be unique across both files for a topic.
+
 AI may help with brainstorming, editing, or formatting. Unreviewed copy-paste from an AI system is not acceptable, and an AI detector is not treated as proof of authorship. Reviewers will check sources, correctness, originality, and whether the author can defend the material.
 
 ## Review process

@@ -77,8 +77,59 @@ const OAUTH_TTL_MS = 1000 * 60 * 10;
 const TOPIC_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,99}$/i;
 const NOTE_ID_PATTERN = /^[a-f0-9-]{20,80}$/i;
 
+// Rate limit scopes: max requests per rolling fixed window.
+const RATE_LIMIT_AUTH = { windowMs: 60_000, max: 10 };
+const RATE_LIMIT_MUTATION = { windowMs: 60_000, max: 60 };
+
 function now() {
   return Date.now();
+}
+
+/** Constant-time string comparison for secret material (state, CSRF tokens). */
+function constantTimeEqual(left: string, right: string) {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+function clientIp(request: Request) {
+  return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+/**
+ * Fixed-window rate limiter backed by D1. Returns false when the caller has
+ * exceeded `max` requests inside the current window for the given scope key.
+ */
+async function rateLimitAllow(env: AppEnv, scope: string, identifier: string, windowMs: number, max: number): Promise<boolean> {
+  if (!env.DB) return true;
+  const windowIndex = Math.floor(now() / windowMs);
+  const key = `${scope}:${identifier}:${windowIndex}`;
+  try {
+    const row = await env.DB.prepare(
+      `INSERT INTO rate_limits (key, count, window_start, created_at) VALUES (?, 1, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE WHEN window_start = excluded.window_start THEN count + 1 ELSE 1 END,
+         window_start = excluded.window_start
+       RETURNING count`,
+    ).bind(key, windowIndex * windowMs, now()).first<{ count: number }>();
+    return (row?.count ?? 0) <= max;
+  } catch {
+    // Fail open: availability matters more than throttling if the table is missing.
+    return true;
+  }
+}
+
+async function enforceAuthRateLimit(request: Request, env: AppEnv): Promise<Response | null> {
+  const allowed = await rateLimitAllow(env, 'auth', clientIp(request), RATE_LIMIT_AUTH.windowMs, RATE_LIMIT_AUTH.max);
+  return allowed ? null : json({ error: 'Too many requests. Try again shortly.' }, 429, { 'Retry-After': String(Math.ceil(RATE_LIMIT_AUTH.windowMs / 1000)) });
+}
+
+async function enforceMutationRateLimit(env: AppEnv, userId: string): Promise<Response | null> {
+  const allowed = await rateLimitAllow(env, 'mutation', userId, RATE_LIMIT_MUTATION.windowMs, RATE_LIMIT_MUTATION.max);
+  return allowed ? null : json({ error: 'Too many requests. Slow down and try again shortly.' }, 429, { 'Retry-After': String(Math.ceil(RATE_LIMIT_MUTATION.windowMs / 1000)) });
 }
 
 function base64Url(bytes: Uint8Array) {
@@ -122,7 +173,7 @@ function getCookie(request: Request, name: string) {
 function csrfFailure(request: Request) {
   const cookieToken = getCookie(request, CSRF_COOKIE);
   const headerToken = request.headers.get('X-CSRF-Token');
-  return cookieToken && headerToken && cookieToken === headerToken
+  return cookieToken && headerToken && constantTimeEqual(cookieToken, headerToken)
     ? null
     : errorResponse('CSRF validation failed', 403);
 }
@@ -133,6 +184,8 @@ function json(data: unknown, status = 200, headers: HeadersInit = {}) {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
       ...headers,
     },
   });
@@ -170,7 +223,13 @@ async function parseJson(request: Request, maxBytes = 64 * 1024): Promise<Record
   if (contentLength > maxBytes) throw new Error('Request body is too large');
   const text = await request.text();
   if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error('Request body is too large');
-  const value: unknown = JSON.parse(text);
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    // Never surface raw parser errors to clients.
+    throw new Error('Invalid JSON body');
+  }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Request body must be a JSON object');
   return value as Record<string, unknown>;
 }
@@ -268,6 +327,7 @@ async function githubJson<T>(url: string, token: string, init: RequestInit = {})
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Pingala-App',
       ...(init.headers || {}),
     },
   });
@@ -277,6 +337,8 @@ async function githubJson<T>(url: string, token: string, init: RequestInit = {})
 
 async function beginGitHubLogin(request: Request, env: AppEnv) {
   if (!isConfigured(env)) return errorResponse('GitHub login is not configured yet', 503);
+  const rateLimited = await enforceAuthRateLimit(request, env);
+  if (rateLimited) return rateLimited;
   // OAuth state cookies are host-only. Always start on the same canonical host
   // configured as GitHub's callback URL, otherwise a custom domain can lose the
   // cookie when GitHub redirects back to the Pages domain.
@@ -308,6 +370,8 @@ async function beginGitHubLogin(request: Request, env: AppEnv) {
 
 async function finishGitHubLogin(request: Request, env: AppEnv) {
   if (!isConfigured(env)) return authErrorRedirect(request, env, 'not_configured');
+  const rateLimited = await enforceAuthRateLimit(request, env);
+  if (rateLimited) return rateLimited;
   const url = new URL(request.url);
   const providerError = url.searchParams.get('error');
   if (providerError) {
@@ -316,7 +380,7 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const cookieState = getCookie(request, OAUTH_COOKIE);
-  if (!code || !state || !cookieState || state !== cookieState) {
+  if (!code || !state || !cookieState || !constantTimeEqual(state, cookieState)) {
     return authErrorRedirect(request, env, 'invalid_state');
   }
 
@@ -374,6 +438,9 @@ async function finishGitHubLogin(request: Request, env: AppEnv) {
          github_email = excluded.github_email, display_name = excluded.display_name,
          avatar_url = excluded.avatar_url, updated_at = excluded.updated_at`,
     ).bind(userId, String(profile.id), profile.login, githubEmail || existing?.github_email || null, profile.name || profile.login, profile.avatar_url, timestamp, timestamp).run();
+    // Opportunistic hygiene: drop expired sessions and stale rate-limit windows.
+    await env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(timestamp).run();
+    await env.DB.prepare('DELETE FROM rate_limits WHERE window_start <= ?').bind(timestamp - 10 * 60_000).run();
     await env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), userId, await digest(rawSession, env.SESSION_SECRET), timestamp + SESSION_TTL_MS, timestamp).run();
   } catch {
@@ -405,13 +472,16 @@ async function updateProfile(request: Request, env: AppEnv) {
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   let body: Record<string, unknown>;
   try { body = await parseJson(request, 8 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
-  const name = cleanString(body.name, 120) || result.name;
-  const bio = cleanString(body.bio, 500);
-  const learningGoal = cleanString(body.learningGoal, 240);
+  // Explicit semantics: omit a field to keep it, send a string (even empty) to set/clear it.
+  const name = body.name === undefined ? result.name : cleanString(body.name, 120);
+  const bio = body.bio === undefined ? result.bio : cleanString(body.bio, 500);
+  const learningGoal = body.learningGoal === undefined ? result.learningGoal : cleanString(body.learningGoal, 240);
   await env.DB.prepare('UPDATE users SET display_name = ?, bio = ?, learning_goal = ?, updated_at = ? WHERE id = ?')
-    .bind(name, bio, learningGoal, now(), result.id).run();
+    .bind(name || result.name, bio, learningGoal, now(), result.id).run();
   const updated = await sessionUser(request, env);
   return updated ? json({ user: updated }) : errorResponse('Could not load updated profile', 500);
 }
@@ -433,6 +503,8 @@ async function updateSettings(request: Request, env: AppEnv) {
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   let body: Record<string, unknown>;
   try { body = await parseJson(request, 32 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
   let incoming: SettingsPayload;
@@ -450,17 +522,21 @@ async function updateSettings(request: Request, env: AppEnv) {
   return json({ settings: payload });
 }
 
+async function progressPayload(env: AppEnv, userId: string) {
+  const [completed, bookmarks] = await Promise.all([
+    env.DB.prepare('SELECT topic_id FROM progress WHERE user_id = ? ORDER BY topic_id').bind(userId).all<{ topic_id: string }>(),
+    env.DB.prepare('SELECT topic_id FROM bookmarks WHERE user_id = ? ORDER BY topic_id').bind(userId).all<{ topic_id: string }>(),
+  ]);
+  return {
+    completedTopicIds: completed.results.map((row) => row.topic_id),
+    bookmarkedTopicIds: bookmarks.results.map((row) => row.topic_id),
+  };
+}
+
 async function progress(request: Request, env: AppEnv) {
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
-  const [completed, bookmarks] = await Promise.all([
-    env.DB.prepare('SELECT topic_id FROM progress WHERE user_id = ? ORDER BY topic_id').bind(result.id).all<{ topic_id: string }>(),
-    env.DB.prepare('SELECT topic_id FROM bookmarks WHERE user_id = ? ORDER BY topic_id').bind(result.id).all<{ topic_id: string }>(),
-  ]);
-  return json({
-    completedTopicIds: completed.results.map((row) => row.topic_id),
-    bookmarkedTopicIds: bookmarks.results.map((row) => row.topic_id),
-  });
+  return json(await progressPayload(env, result.id));
 }
 
 function validTopicId(topicId: string) {
@@ -519,6 +595,8 @@ async function createNote(request: Request, env: AppEnv) {
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   let body: Record<string, unknown>;
   try { body = await parseJson(request, 32 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
   const topicId = cleanString(body.topicId, 100);
@@ -543,6 +621,8 @@ async function updateNote(request: Request, env: AppEnv, noteId: string) {
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   if (!validNoteId(noteId)) return errorResponse('Invalid note id', 400);
   let body: Record<string, unknown>;
   try { body = await parseJson(request, 16 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
@@ -564,6 +644,8 @@ async function deleteNote(request: Request, env: AppEnv, noteId: string) {
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   if (!validNoteId(noteId)) return errorResponse('Invalid note id', 400);
   const deleted = await env.DB.prepare('DELETE FROM reading_notes WHERE id = ? AND user_id = ?').bind(noteId, result.id).run();
   return deleted.meta.changes > 0 ? json({ ok: true }) : errorResponse('Note not found', 404);
@@ -574,17 +656,23 @@ async function syncProgress(request: Request, env: AppEnv) {
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   let body: Record<string, unknown>;
   try { body = await parseJson(request, 128 * 1024); } catch (error) { return errorResponse(error instanceof Error ? error.message : 'Invalid JSON', 400); }
-  const completed = Array.isArray(body.completedTopicIds) ? body.completedTopicIds.filter((id): id is string => typeof id === 'string' && validTopicId(id)).slice(0, 2000) : [];
-  const bookmarked = Array.isArray(body.bookmarkedTopicIds) ? body.bookmarkedTopicIds.filter((id): id is string => typeof id === 'string' && validTopicId(id)).slice(0, 2000) : [];
+  const completedInput = Array.isArray(body.completedTopicIds) ? body.completedTopicIds.filter((id): id is string => typeof id === 'string' && validTopicId(id)) : [];
+  const bookmarkedInput = Array.isArray(body.bookmarkedTopicIds) ? body.bookmarkedTopicIds.filter((id): id is string => typeof id === 'string' && validTopicId(id)) : [];
+  const truncated = completedInput.length > 2000 || bookmarkedInput.length > 2000;
+  const completed = completedInput.slice(0, 2000);
+  const bookmarked = bookmarkedInput.slice(0, 2000);
   const timestamp = now();
   const statements = [
     ...[...new Set(completed)].map((topicId) => env.DB.prepare('INSERT INTO progress (user_id, topic_id, completed_at) VALUES (?, ?, ?) ON CONFLICT(user_id, topic_id) DO NOTHING').bind(result.id, topicId, timestamp)),
     ...[...new Set(bookmarked)].map((topicId) => env.DB.prepare('INSERT INTO bookmarks (user_id, topic_id, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id, topic_id) DO NOTHING').bind(result.id, topicId, timestamp)),
   ];
   if (statements.length > 0) await env.DB.batch(statements);
-  return progress(request, env);
+  const payload = await progressPayload(env, result.id);
+  return json(truncated ? { ...payload, truncated: true } : payload);
 }
 
 async function toggleTopic(request: Request, env: AppEnv, topicId: string, table: 'progress' | 'bookmarks', enabled: boolean) {
@@ -592,6 +680,8 @@ async function toggleTopic(request: Request, env: AppEnv, topicId: string, table
   if (csrfError) return csrfError;
   const result = await requireUser(request, env);
   if (result instanceof Response) return result;
+  const rateLimited = await enforceMutationRateLimit(env, result.id);
+  if (rateLimited) return rateLimited;
   if (!validTopicId(topicId)) return errorResponse('Invalid topic id', 400);
   if (enabled) {
     const column = table === 'progress' ? 'completed_at' : 'created_at';
@@ -603,40 +693,86 @@ async function toggleTopic(request: Request, env: AppEnv, topicId: string, table
   return json({ ok: true });
 }
 
+function safeDecode(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+async function route(request: Request, env: AppEnv, context: EventContext<Env, string, unknown>): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname === '/auth/github' && request.method === 'GET') return beginGitHubLogin(request, env);
+  if (url.pathname === '/auth/github/callback' && request.method === 'GET') return finishGitHubLogin(request, env);
+  if (url.pathname === '/auth/logout' && request.method === 'POST') return logout(request, env);
+  if (url.pathname === '/api/me' && request.method === 'GET') return me(request, env);
+  if (url.pathname === '/api/me/profile' && request.method === 'PATCH') return updateProfile(request, env);
+  if (url.pathname === '/api/me/settings' && request.method === 'GET') return getSettings(request, env);
+  if (url.pathname === '/api/me/settings' && request.method === 'PATCH') return updateSettings(request, env);
+  if (url.pathname === '/api/progress' && request.method === 'GET') return progress(request, env);
+  if (url.pathname === '/api/progress/sync' && request.method === 'POST') return syncProgress(request, env);
+  if (url.pathname === '/api/notes' && request.method === 'GET') return listNotes(request, env);
+  if (url.pathname === '/api/notes' && request.method === 'POST') return createNote(request, env);
+
+  const progressMatch = url.pathname.match(/^\/api\/progress\/([^/]+)$/);
+  if (progressMatch && ['PUT', 'DELETE'].includes(request.method)) {
+    const topicId = safeDecode(progressMatch[1]);
+    if (!topicId) return errorResponse('Invalid topic id', 400);
+    return toggleTopic(request, env, topicId, 'progress', request.method === 'PUT');
+  }
+  const bookmarkMatch = url.pathname.match(/^\/api\/bookmarks\/([^/]+)$/);
+  if (bookmarkMatch && ['PUT', 'DELETE'].includes(request.method)) {
+    const topicId = safeDecode(bookmarkMatch[1]);
+    if (!topicId) return errorResponse('Invalid topic id', 400);
+    return toggleTopic(request, env, topicId, 'bookmarks', request.method === 'PUT');
+  }
+  const noteMatch = url.pathname.match(/^\/api\/notes\/([^/]+)$/);
+  if (noteMatch && request.method === 'PATCH') {
+    const noteId = safeDecode(noteMatch[1]);
+    return noteId ? updateNote(request, env, noteId) : errorResponse('Invalid note id', 400);
+  }
+  if (noteMatch && request.method === 'DELETE') {
+    const noteId = safeDecode(noteMatch[1]);
+    return noteId ? deleteNote(request, env, noteId) : errorResponse('Invalid note id', 400);
+  }
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return errorResponse('Not found', 404);
+  return context.next() as unknown as Promise<Response>;
+}
+
 export const onRequest: PagesFunction<AppEnv> = async (context) => {
   const { request, env } = context;
   const url = new URL(request.url);
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const startedAt = Date.now();
+  let response: Response;
+  let outcome: 'ok' | 'error' = 'ok';
   try {
-    if (url.pathname === '/auth/github' && request.method === 'GET') return beginGitHubLogin(request, env);
-    if (url.pathname === '/auth/github/callback' && request.method === 'GET') return finishGitHubLogin(request, env);
-    if (url.pathname === '/auth/logout' && request.method === 'POST') return logout(request, env);
-    if (url.pathname === '/api/me' && request.method === 'GET') return me(request, env);
-    if (url.pathname === '/api/me/profile' && request.method === 'PATCH') return updateProfile(request, env);
-    if (url.pathname === '/api/me/settings' && request.method === 'GET') return getSettings(request, env);
-    if (url.pathname === '/api/me/settings' && request.method === 'PATCH') return updateSettings(request, env);
-    if (url.pathname === '/api/progress' && request.method === 'GET') return progress(request, env);
-    if (url.pathname === '/api/progress/sync' && request.method === 'POST') return syncProgress(request, env);
-    if (url.pathname === '/api/notes' && request.method === 'GET') return listNotes(request, env);
-    if (url.pathname === '/api/notes' && request.method === 'POST') return createNote(request, env);
-
-    const progressMatch = url.pathname.match(/^\/api\/progress\/([^/]+)$/);
-    if (progressMatch && ['PUT', 'DELETE'].includes(request.method)) {
-      return toggleTopic(request, env, progressMatch[1], 'progress', request.method === 'PUT');
-    }
-    const bookmarkMatch = url.pathname.match(/^\/api\/bookmarks\/([^/]+)$/);
-    if (bookmarkMatch && ['PUT', 'DELETE'].includes(request.method)) {
-      return toggleTopic(request, env, bookmarkMatch[1], 'bookmarks', request.method === 'PUT');
-    }
-    const noteMatch = url.pathname.match(/^\/api\/notes\/([^/]+)$/);
-    if (noteMatch && request.method === 'PATCH') return updateNote(request, env, decodeURIComponent(noteMatch[1]));
-    if (noteMatch && request.method === 'DELETE') return deleteNote(request, env, decodeURIComponent(noteMatch[1]));
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return errorResponse('Not found', 404);
-    return context.next();
+    response = await route(request, env, context);
   } catch (error) {
-    console.error(JSON.stringify({ event: 'request_error', message: error instanceof Error ? error.message : 'Unknown error' }));
+    outcome = 'error';
+    console.error(JSON.stringify({
+      event: 'request_error',
+      id: requestId,
+      method: request.method,
+      path: url.pathname,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    }));
     if (url.pathname === '/auth/github' || url.pathname === '/auth/github/callback') {
-      return authErrorRedirect(request, env, 'server_error');
+      response = authErrorRedirect(request, env, 'server_error');
+    } else {
+      response = errorResponse('Internal server error', 500);
     }
-    return errorResponse('Internal server error', 500);
   }
+  // One structured log line per request for observability in the Cloudflare dashboard.
+  console.log(JSON.stringify({
+    event: 'request',
+    id: requestId,
+    method: request.method,
+    path: url.pathname,
+    status: response.status,
+    ms: Date.now() - startedAt,
+    ...(outcome === 'error' ? { errored: true } : {}),
+  }));
+  return response;
 };

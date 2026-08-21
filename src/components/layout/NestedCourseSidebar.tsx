@@ -8,14 +8,12 @@ interface NestedCourseSidebarProps {
   activeTopicId?: string;
   completedTopicIds?: Set<string>;
   onSelectTopic: (topicId: string) => void;
-  onSelectCourseHome: () => void;
 }
 
 export const NestedCourseSidebar: React.FC<NestedCourseSidebarProps> = ({
   course,
   activeTopicId,
   onSelectTopic,
-  onSelectCourseHome,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const filteredModules = useMemo(() => {
@@ -39,8 +37,6 @@ export const NestedCourseSidebar: React.FC<NestedCourseSidebarProps> = ({
       .filter(Boolean) as typeof course.modules;
   }, [course.modules, searchQuery]);
 
-  const isHomeActive = !activeTopicId;
-
   return (
     <aside className="image1-nested-sidebar">
       {/* Search Bar at Top */}
@@ -59,17 +55,6 @@ export const NestedCourseSidebar: React.FC<NestedCourseSidebarProps> = ({
 
       {/* Navigation Tree Content */}
       <div className="sidebar-tree-body">
-        {/* Category Heading (Only bold white header) */}
-        <div className="tree-category-heading">Curriculum</div>
-        
-        {/* Overview / Home Item */}
-        <div 
-          className={`sidebar-nav-item root-item ${isHomeActive ? 'active' : ''}`}
-          onClick={onSelectCourseHome}
-        >
-          <span className="item-text">Overview</span>
-        </div>
-
         <CurriculumList modules={filteredModules} compact activeTopicId={activeTopicId} onSelectTopic={onSelectTopic} />
       </div>
     </aside>
