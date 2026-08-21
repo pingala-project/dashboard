@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse, stringify } from 'yaml';
 import katex from 'katex';
 
@@ -11,6 +12,12 @@ const GENERATED_FILE = path.join(ROOT, 'src/data/generatedCourses.ts');
 const ASSET_OUTPUT = path.join(ROOT, 'public/content-assets');
 
 const VALID_DIFFICULTIES = new Set(['Beginner', 'Intermediate', 'Advanced']);
+// SPDX identifiers accepted for lesson licensing. Anything else fails validation
+// so provenance stays machine-checkable.
+const VALID_LICENSES = new Set([
+  'CC-BY-4.0', 'CC-BY-SA-4.0', 'CC-BY-NC-SA-4.0', 'CC0-1.0',
+  'MIT', 'Apache-2.0', 'BSD-3-Clause', 'BSD-2-Clause', 'Unlicense', 'OFL-1.1',
+]);
 const VALID_CODE_LANGUAGES = new Set(['text', 'bash', 'sh', 'shell', 'python', 'javascript', 'typescript', 'tsx', 'jsx', 'json', 'yaml', 'yml', 'html', 'css', 'sql', 'go', 'rust', 'java', 'c', 'cpp', 'markdown', 'mermaid']);
 const MAX_WORDS = 20000;
 const VALID_BLOCK_TYPES = new Set([
@@ -102,7 +109,11 @@ function tokenSimilarity(left, right) {
   return intersection / new Set([...leftTokens, ...rightTokens]).size;
 }
 
-function parseMarkdown(markdown) {
+function deterministicCheckpointId(seed, question) {
+  return createHash('sha256').update(`${seed}::${question}`).digest('hex').slice(0, 12);
+}
+
+function parseMarkdown(markdown, checkpointIdSeed = '') {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
   const checkpoints = [];
@@ -135,9 +146,10 @@ function parseMarkdown(markdown) {
         blocks.push({ type: directive.type, ...parseYamlDirectiveBody(body, 'content.md', directive.type), ...(directive.title ? { title: directive.title } : {}) });
       } else if (directive.type === 'checkpoint') {
         const yamlData = parseYamlDirectiveBody(body, 'content.md', 'checkpoint');
+        const question = directive.title || yamlData.question;
         checkpoints.push({
-          id: Math.random().toString(36).substring(2, 10), // Deterministic pseudo-random ID is fine for local builds
-          question: directive.title || yamlData.question,
+          id: deterministicCheckpointId(checkpointIdSeed, question),
+          question,
           ...yamlData
         });
       } else if (directive.type === 'math') {
@@ -267,13 +279,37 @@ function normalizeMediaUrl(value) {
   return `/content-assets/${value.slice(2)}`;
 }
 
+function validateCheckpoints(checkpoints, sourceLabel) {
+  checkpoints.forEach((checkpoint, index) => {
+    assert(checkpoint && typeof checkpoint === 'object' && !Array.isArray(checkpoint), `${sourceLabel}: checkpoint ${index} must be a mapping`);
+    assert(typeof checkpoint.id === 'string' && checkpoint.id.trim(), `${sourceLabel}: checkpoint ${index} needs an id`);
+    assert(typeof checkpoint.question === 'string' && checkpoint.question.trim(), `${sourceLabel}: checkpoint ${index} needs a question`);
+    assert(Array.isArray(checkpoint.options) && checkpoint.options.length >= 2, `${sourceLabel}: checkpoint ${index} needs at least two options`);
+    assert(Number.isInteger(checkpoint.correctIndex) && checkpoint.correctIndex >= 0 && checkpoint.correctIndex < checkpoint.options.length,
+      `${sourceLabel}: checkpoint ${index} has invalid correctIndex`);
+    assert(typeof checkpoint.explanation === 'string' && checkpoint.explanation.trim(), `${sourceLabel}: checkpoint ${index} needs an explanation`);
+    [checkpoint.question, checkpoint.explanation, ...checkpoint.options].forEach((text) => {
+      assert(typeof text === 'string', `${sourceLabel}: checkpoint ${index} fields must be strings`);
+      validateSafeText(text, sourceLabel);
+    });
+  });
+}
+
+async function loadFileCheckpoints(checkpointsPath) {
+  if (!(await fileExists(checkpointsPath))) return [];
+  const value = await readYaml(checkpointsPath);
+  const list = Array.isArray(value) ? value : value.checkpoints;
+  assert(Array.isArray(list), `${toPosix(path.relative(ROOT, checkpointsPath))}: expected a list of checkpoints or { checkpoints: [...] }`);
+  return list;
+}
+
 function validateSafeText(value, filePath) {
   assert(!/<\/?script\b/i.test(value), `${filePath}: script tags are not allowed`);
   assert(!/<[a-z][^>]*>/i.test(value), `${filePath}: raw HTML is not allowed`);
   assert(!/\bjavascript:/i.test(value), `${filePath}: javascript URLs are not allowed`);
   const links = [...value.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)].map((match) => match[1].trim());
   links.forEach((link) => {
-    assert(/^(https?:\/\/|#|\/)/i.test(link), `${filePath}: links must use https, relative, or hash URLs`);
+    assert(/^(https:\/\/|#|\/)/i.test(link), `${filePath}: links must use https, relative, or hash URLs`);
   });
 }
 
@@ -334,6 +370,7 @@ async function loadContent() {
           try { new URL(source); } catch { throw new Error(`${relativeTopic}: invalid source URL: ${source}`); }
         });
         assert(metadata.license, `${relativeTopic}: license is required`);
+        assert(VALID_LICENSES.has(metadata.license), `${relativeTopic}: unknown license "${metadata.license}" (allowed: ${[...VALID_LICENSES].join(', ')})`);
         assert(typeof metadata.aiAssisted === 'boolean', `${relativeTopic}: aiAssisted must be boolean`);
         assert(typeof metadata.authorAttestation === 'boolean', `${relativeTopic}: authorAttestation must be boolean`);
         if (!metadata.legacy) {
@@ -355,7 +392,7 @@ async function loadContent() {
         assert(!nearDuplicate, `${relativeTopic}: content is near-duplicate of ${nearDuplicate?.[1]}`);
         normalizedBodies.push([normalizedBody, relativeTopic]);
 
-        const { blocks: parsedBlocks, checkpoints: parsedCheckpoints } = parseMarkdown(content);
+        const { blocks: parsedBlocks, checkpoints: parsedCheckpoints } = parseMarkdown(content, metadata.id);
         validateBlocks(parsedBlocks, contentPath);
         for (const block of parsedBlocks) {
           const mediaUrl = block.type === 'image' || block.type === 'chart' ? block.src : block.type === 'attachment' ? block.url : undefined;
@@ -370,16 +407,12 @@ async function loadContent() {
           return block;
         });
 
-        const checkpoints = parsedCheckpoints;
-        checkpoints.forEach((checkpoint, index) => {
-          assert(checkpoint.id && checkpoint.question, `${relativeTopic}/content.md: checkpoint ${index} is incomplete`);
-          assert(Array.isArray(checkpoint.options) && checkpoint.options.length >= 2, `${relativeTopic}/content.md: checkpoint ${index} needs options`);
-          assert(Number.isInteger(checkpoint.correctIndex) && checkpoint.correctIndex >= 0 && checkpoint.correctIndex < checkpoint.options.length,
-            `${relativeTopic}/content.md: checkpoint ${index} has invalid correctIndex`);
-          assert(checkpoint.explanation, `${relativeTopic}/content.md: checkpoint ${index} needs explanation`);
-        });
+        const fileCheckpoints = await loadFileCheckpoints(checkpointsPath);
+        validateCheckpoints(fileCheckpoints, `${relativeTopic}/checkpoints.yml`);
+        validateCheckpoints(parsedCheckpoints, `${relativeTopic}/content.md`);
+        const checkpoints = [...fileCheckpoints, ...parsedCheckpoints];
         assert(new Set(checkpoints.map((checkpoint) => checkpoint.id)).size === checkpoints.length,
-          `${relativeTopic}/checkpoints.yml: checkpoint IDs must be unique`);
+          `${relativeTopic}: checkpoint IDs must be unique across checkpoints.yml and content.md`);
 
         topics.push({
           ...metadata,
@@ -439,4 +472,22 @@ async function main() {
   throw new Error(`Unknown content command: ${command}`);
 }
 
-await main();
+export {
+  loadContent,
+  parseMarkdown,
+  validateSafeText,
+  validateBlocks,
+  validateCheckpoints,
+  validateHeadingHierarchy,
+  deterministicCheckpointId,
+  tokenSimilarity,
+  VALID_LICENSES,
+  VALID_CODE_LANGUAGES,
+};
+
+// Only auto-run when invoked directly (node scripts/content.mjs <command>);
+// tests import the exported helpers instead.
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  await main();
+}
